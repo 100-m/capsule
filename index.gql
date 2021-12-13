@@ -1,0 +1,122 @@
+mutation {
+  propose(args: {
+    uid: "FR123",
+    name: "EQUITY-FR",
+    country: "France",
+    currency: "EUR",
+    source: "manual"
+  }) {
+    id
+  }
+}
+
+query {
+  candidates {
+    id
+  }
+}
+
+query {
+  candidates(where: {instrument: {uid: {_eq: "FR123"}}}) {
+    id
+  }
+}
+
+mutation {
+  approve(args: {
+    event_id: 1
+  }) {
+    id
+  }
+}
+
+mutation {
+  reject(args: {
+    event_id: 2
+  }) {
+    id
+  }
+}
+
+query {
+  golden(args: {
+    uid: "FR123"
+  }) {
+    name
+    country
+    currency
+  }
+}
+
+---
+
+mutation propose(
+  $uid: String
+  $name: String
+  $country: String
+  $currency: String
+  $source: String
+  $user_id: Int
+) {
+  propose(args: {
+    uid: $uid,
+    name: $name,
+    country: $country,
+    currency: $currency,
+    source: $source,
+    current_user_id: $user_id
+  }) {
+    id
+  }
+}
+
+mutation approve(
+  $event_id: Int
+  $user_id: Int
+) {
+  approve(args: {
+    event_id: $event_id,
+    current_user_id: $user_id
+  }) {
+    id
+  }
+}
+
+{
+  "event_id": 26,
+  "user_id": 1
+}
+
+---
+
+mutation Propose(
+  $uid: String
+  $name: String
+  $country: String
+  $currency: String
+  $source: String
+  $user_id: Int
+) {
+  insert_event_one(
+    object: {
+      capsule: { data: { capsule_class: "instrument", capsule_uid: $uid } }
+      instrument: { data: { uid: $uid, name: $name, country: $country, currency: $currency } }
+      source: $source
+      type: "propose"
+      user_id: $user_id
+    }
+  ) {
+    id
+  }
+}
+
+{
+  "uid": "FR123",
+  "name": "EQUITY-FR",
+  "country": "France",
+  "currency": "EUR",
+  "source": "manual",
+  "user_id": 1
+}
+
+---
