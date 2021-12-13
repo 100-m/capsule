@@ -11,7 +11,8 @@ DROP TABLE IF EXISTS instrument;
 DROP TABLE IF EXISTS resolution;
 CREATE TABLE "resolution" (
   "source" VARCHAR NOT NULL,
-  "user_id" INTEGER NOT NULL,
+  "update_user_id" INTEGER NOT NULL DEFAULT 1,
+  "update_date" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "resolution_status" VARCHAR,
   "resolution_date" TIMESTAMPTZ,
   "resolution_user_id" INTEGER
@@ -27,13 +28,18 @@ CREATE TABLE "instrument" (
 ) INHERITS (resolution);
 CREATE TABLE "equity" (
   "issuer" VARCHAR NOT NULL,
-  "share_number" INTEGER NOT NULL
+  "share_number" INTEGER NOT NULL,
+  CONSTRAINT "equity_unique" UNIQUE ("uid", "name", "country", "currency", "issuer", "share_number"),
+  CONSTRAINT "PK_equity_id" PRIMARY KEY ("id")
 ) INHERITS (instrument);
 CREATE TABLE "preferred" (
-  "rate" FLOAT NOT NULL
+  "rate" FLOAT NOT NULL,
+  CONSTRAINT "preferred_unique" UNIQUE ("uid", "name", "country", "currency", "issuer", "share_number", "rate"),
+  CONSTRAINT "PK_preferred_id" PRIMARY KEY ("id")
 ) INHERITS (equity);
 CREATE TABLE "bond" (
   "maturity_date" TIMESTAMPTZ NOT NULL,
+  CONSTRAINT "bond_unique" UNIQUE ("uid", "name", "country", "currency", "maturity_date"),
   CONSTRAINT "PK_bond_id" PRIMARY KEY ("id")
 ) INHERITS (instrument);
 CREATE TABLE "coupon" (
