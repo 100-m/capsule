@@ -1,0 +1,76 @@
+spectaql:
+  logoFile: spectaql-logo.png # https://www.neoxam.com/wp-content/uploads/2018/06/logo@2x.png
+  faviconFile: spectaql-favicon.png # https://www.neoxam.com/wp-content/themes/neoxam/assets/favicon/favicon-32x32.png
+  additionalJsFile: ./spectaql.js
+
+introspection:
+  url: https://capsule.dock.nx.digital/v1/graphql
+  # headers:
+  #   Authorization: Bearer s3cretT0k2n
+
+  removeTrailingPeriodFromDescriptions: true
+
+  # metadataFile: ./spectaql-metadata.js
+  # metadatasReadPath: documentation
+  # metadatasWritePath: documentation
+  # metadatasPath: documentation
+  # metadatas: true
+
+  dynamicExamplesProcessingModule: ./spectaql-examples.js
+
+  # queriesDocumentedDefault: true
+  # queryDocumentedDefault: true
+  # queryArgDocumentedDefault: true
+  # hideQueriesWithUndocumentedReturnType: true
+
+  # mutationsDocumentedDefault: true
+  # mutationDocumentedDefault: true
+  # mutationArgDocumentedDefault: true
+  # hideMutationsWithUndocumentedReturnType: true
+
+  # typesDocumented: true
+  # typeDocumentedDefault: true
+  # fieldDocumentedDefault: true
+  # argDocumentedDefault: true
+  # hideFieldsWithUndocumentedReturnType: true
+
+servers:
+  - url: https://capsule.dock.nx.digital/v1/graphql
+    description: Production Server
+    production: true
+
+info:
+  x-hideIntroduction: false
+  x-hideWelcome: false
+  x-hideIntroItems: false
+  x-hideIsDeprecated: false
+  x-hideDeprecationReason: false
+  x-htmlTitle: Capsule API Doc
+  x-introItems:
+  x-hidePoweredBy: true
+  x-swaggerUrl:
+
+  version: 1.0.0
+  title: Capsule API Doc
+  description: |
+    ### This is capsule's API Doc main description
+
+    On this *Welcome* section you can find information about the graphql endpoint
+    
+    Hierarchie des notions:
+    1. valeur validée ou pas
+    2. valeur historisée // attention c'est l'historique des modifications date, pas de l'effective date.
+    3. multisource.
+    4. concepts de droits (on connait qui execute les calls, et on a moyen de savoir quel role il a)
+    5. transcription DB.
+    6. bitemporel valeur effective.
+
+  termsOfService:
+  contact:
+    name: NeoXam Support
+    url: https://neoxam.com/support
+  api:
+    name: API Endpoint
+    url: https://capsule.dock.nx.digital/v1/graphql
+  license:
+

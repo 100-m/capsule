@@ -1,0 +1,8 @@
+{
+  "scripts": {
+    "start": "npx spectaql spectaql.yml"
+  },
+  "dependencies": {
+    "spectaql": "^0.11.0"
+  }
+}
