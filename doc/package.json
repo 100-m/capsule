@@ -1,6 +1,7 @@
 {
   "scripts": {
-    "start": "npx spectaql spectaql.yml"
+    "build": "npx spectaql spectaql.yml && cp spectaql.min.css public/stylesheets/spectaql.min.css && cp spectaql.min.js public/javascripts/spectaql.min.js",
+    "serve": "http-server -p80 public"
   },
   "dependencies": {
     "spectaql": "^0.11.0"

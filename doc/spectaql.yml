@@ -4,11 +4,13 @@ spectaql:
   additionalJsFile: ./spectaql.js
 
 introspection:
-  url: https://capsule.dock.nx.digital/v1/graphql
+  # url: https://capsule.dock.nx.digital/v1/graphql
   # headers:
   #   Authorization: Bearer s3cretT0k2n
 
-  removeTrailingPeriodFromDescriptions: true
+  # removeTrailingPeriodFromDescriptions: true
+
+  schemaFile: ./schema.gql
 
   # metadataFile: ./spectaql-metadata.js
   # metadatasReadPath: documentation
@@ -68,9 +70,7 @@ info:
   termsOfService:
   contact:
     name: NeoXam Support
-    url: https://neoxam.com/support
-  api:
-    name: API Endpoint
-    url: https://capsule.dock.nx.digital/v1/graphql
+    email: support@nx.digital
+    url: https://nx.digital/support
   license:
 

@@ -22,12 +22,7 @@ function scalarProcessor (argz = {}) {
     definition,
   } = argz
 
-  switch (name) {
-    case 'Int': {
-      // Life, the Universe and Everything
-      return 42
-    }
-  }
+  // return name
 }
 
 /**
@@ -62,13 +57,9 @@ function fieldProcessor (argz = {}) {
     isArray,
   } = argz
 
-  if (definition.properties?.return?.example) return
-  if (!definition.example) {
-    const val = `Generated Field example for ${name}`
-    return isArray ? [val] : val
-  }
+  const x = ['field', parentName, name, returnType].join('-')
+  return isArray ? [x] : x
 }
-
 
 /**
  * Accepts a bunch of information about an Argument, and allows you to return an example
@@ -111,11 +102,8 @@ function argumentProcessor (argz = {}) {
     isArray,
   } = argz
 
-  if (definition?.example) return
-  if (type === 'String') {
-    const val = `Generated Argument example for ${parentName} ${name}`
-    return isArray ? [val] : val
-  }
+  const x = ['arg', parentName, parentType, name, type].join('-')
+  return isArray ? [x] : x
 }
 
 module.exports = {
