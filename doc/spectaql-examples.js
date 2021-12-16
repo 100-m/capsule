@@ -1,3 +1,72 @@
+const tables = {
+  bond: {
+    "country": "FR",
+    "currency": "EUR",
+    "id": 8,
+    "maturity_date": "2027-01-01T00:00:00+00:00",
+    "name": "GGL-2027-2.3%",
+    "resolution_date": "2021-12-16T19:18:33.60704+00:00",
+    "resolution_status": "approved",
+    "resolution_user_id": 2,
+    "source": "manual",
+    "uid": "FR-439903446",
+    "update_date": "2021-12-16T09:18:33.60704+00:00",
+    "update_user_id": 1
+  },
+  coupon: {
+    "bond_id": 8,
+    "coupon": 0.023,
+    "currency": "USD",
+    "date": "2022-01-01T00:00:00+00:00",
+    "id": 1
+  },
+  instrument: {
+    "country": "FR",
+    "currency": "EUR",
+    "id": 1,
+    "name": "AF-PRIVATE-DEBT",
+    "resolution_date": null,
+    "resolution_status": null,
+    "resolution_user_id": null,
+    "source": "manual",
+    "uid": "FR-018066960",
+    "update_date": "2021-12-16T09:18:33.60704+00:00",
+    "update_user_id": 1
+  },
+  equity: {
+    "country": "FR",
+    "currency": "EUR",
+    "id": 2,
+    "issuer": "BNP",
+    "name": "EPA:BNP",
+    "resolution_date": "2021-12-18T09:18:33.60704+00:00",
+    "resolution_status": "rejected",
+    "resolution_user_id": 2,
+    "share_number": 730372026,
+    "source": "manual",
+    "uid": "FR-297920657",
+    "update_date": "2021-12-16T09:18:33.60704+00:00",
+    "update_user_id": 1
+  },
+  preferred: {
+    "country": "US",
+    "currency": "USD",
+    "id": 3,
+    "issuer": "TESLA",
+    "name": "NASDAQ:TSLA",
+    "rate": 0.07,
+    "resolution_date": null,
+    "resolution_status": null,
+    "resolution_user_id": null,
+    "share_number": 194491300,
+    "source": "manual",
+    "uid": "FR-320404407",
+    "update_date": "2021-12-16T09:18:33.60704+00:00",
+    "update_user_id": 1
+  },
+}
+tables.golden = tables.candidates = tables.instrument
+
 /**
  * Accepts a bunch of information about a Scalar, and allows you to return an example
  * to be used in your documentation. If undefined is returned, a default example will
@@ -57,8 +126,9 @@ function fieldProcessor (argz = {}) {
     isArray,
   } = argz
 
-  const x = ['field', parentName, name, returnType].join('-')
-  return isArray ? [x] : x
+  // const x = ['field', parentName, name, returnType].join('-')
+  const x = tables?.[parentName]?.[name]
+  if (x !== undefined) return isArray ? [x] : x
 }
 
 /**
@@ -102,8 +172,8 @@ function argumentProcessor (argz = {}) {
     isArray,
   } = argz
 
-  const x = ['arg', parentName, parentType, name, type].join('-')
-  return isArray ? [x] : x
+  // const x = ['arg', parentName, parentType, name, type].join('-')
+  // return isArray ? [x] : x
 }
 
 module.exports = {
