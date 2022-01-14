@@ -1,3 +1,14 @@
+## TODO 2022/01/06
+- Doc le playground + link to capsule.nx.digital
+- Décrire l'API de modeling
+- Doc simplified (insert/update/delete/propose)
+- Doc editable (edit on github link, md + gql)
+- API modeling query (liste les classes/tables, listes les valeurs, types, description des champs d'une classe, lister l'héritage ou les prédécesseurs, faire un search sur une table ou champ)
+- API modeling mutation (créer une classe)
+- Audit (quand on accept/reject plusieur fois un instrument, on ne garde l'info que de la dernière résolution)
+
+---
+
 Arithméthique de base:
 Hierarchie des notions:
 1. valeur validée ou pas
