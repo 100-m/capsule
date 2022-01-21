@@ -64,3 +64,90 @@ query {
   }
 }
 ```
+
+## Modeling
+```ts
+type schema = {
+  table: string
+  extends?: [string]
+  columns: {
+    [key: string]: 'string?' | 'integer?' | 'float?' | 'date?'
+  }
+  comments: {
+    table: string
+    [key: column]: string
+  }
+  // NOTE: on ne va pas faire un DSL complexe et complet.
+  // Une contrainte d'unicité sera créer auto
+  // pour un comportement différent, plus de contraintes, des valeurs par default, etc..
+  // il faudra fait en SQL directement
+
+  // constrains: {
+  //   unique: ['uid', 'name', 'country', 'currency', 'issuer', 'share_number']
+  // },
+}
+
+// Requête SQL
+fetch('https://capsule.dock.nx.digital/v2/query', {
+  method: 'POST',
+  headers: {
+    'content-type': 'application/json',
+  },
+  body: JSON.stringify({
+    type: 'bulk',
+    source: 'default',
+    args: [
+      {
+        type: 'run_sql',
+        args: {
+          source: 'default',
+          sql: `
+CREATE TABLE "equity" (
+  "issuer" VARCHAR NOT NULL,
+  "share_number" INTEGER NOT NULL,
+  CONSTRAINT "equity_unique" UNIQUE ("uid", "name", "country", "currency", "issuer", "share_number"),
+  CONSTRAINT "PK_equity_id" PRIMARY KEY ("id")
+) INHERITS (instrument);
+COMMENT ON TABLE "equity" IS 'This is the equity table';
+COMMENT ON COLUMN "equity"."issuer" IS 'This is the issuer of the equity table';
+`,
+          cascade: false,
+          read_only: false,
+        },
+      },
+    ],
+  }),
+})
+```
+
+## List all classes, info, descriptions
+```gql
+query {
+  schema {
+    table
+    extends
+    columns
+    comments
+  }
+}
+```
+## Create a new class
+```gql
+mutation {
+  schema(args: {
+    table: 'equity',
+    extends: ['instrument', 'audit'],
+    columns: {
+      issuer: 'string',
+      share_number: 'integer',
+    },
+    comments: {
+      table: 'This is the table users'
+      issuer: 'string',
+      share_number: 'integer',
+    },
+  }) {
+    table
+  }
+}
+```
