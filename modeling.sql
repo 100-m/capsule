@@ -1,4 +1,3 @@
-CREATE EXTENSION IF NOT EXISTS pg_cron;
 CREATE EXTENSION IF NOT EXISTS plv8;
 CREATE EXTENSION IF NOT EXISTS http;
 DROP TRIGGER IF EXISTS schema ON schema;
@@ -67,6 +66,8 @@ CREATE TABLE "${object}" (
   CONSTRAINT "UNIQUE_${object}" UNIQUE (${Object.keys(fields).map(k => `"${k}"`)}),
   CONSTRAINT "PK_${object}" PRIMARY KEY ("id")
 ) INHERITS (${inherits.map(k => `"${k}"`)});
+-- TODO: COMMENT ON TABLE "${object}" IS '${comments.table || ''}';
+-- TODO: COMMENT ON COLUMN "${object}"."${k}" IS '${comments[k] || ''}';
 COMMIT;
 SELECT status FROM http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg_track_table","args":{"table":{"name":"instrument","schema":"public"}}}', 'application/json');
 `)

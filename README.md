@@ -1,12 +1,25 @@
 # Capsule Documentation
 
-This documentation is generated from https://github.com/100-m/capsule.  
-The API is run on https://capsule.dock.nx.digital via [this configuration](https://github.com/100-m/capsule/blob/main/docker-compose.yml).  
-The documentation can be edited directly on github, and will reflect immediately any change on the GraphQL API.
+Capsule is a Research & Development project developed by NeoXam Lab for a data management system with the following features:
+- [-] Database with authorisation capabilities, user or role or feature or row level based
+- [-] Database with audit capabilities, history, rollback
+- [x] Database with validation capabilities, 4-eyes, resolution
+- [ ] Database with bitemporality capabilities, as-at and as-of
+- [x] Database with modeling capabilities
+- [0] Database with business rules capabilities, database-server or application-server (lambda)
+- [ ] Database with computed field capabilities, stored or virtual
+- [ ] System with dependency graph capabilities
+- [ ] System with workflow / scheduling capabilities
+- [x] API in GraphQL & Rest
+- [x] API documented
 
-[Edit on github](https://github.com/100-m/capsule/edit/main/README.md)  
-[Run on Hasura](https://capsule.dock.nx.digital/console)  
-[Run on Apollo](https://studio.apollographql.com/sandbox/explorer)  
+The documentation is located here https://github.com/100-m/capsule and can be edited directly on github.  
+The API runs on https://capsule.dock.nx.digital via [this configuration](https://github.com/100-m/capsule/blob/main/docker-compose.yml).  
+The documentation , and will reflect immediately any change on the GraphQL API.
+
+- [Edit on github](https://github.com/100-m/capsule/edit/main/README.md)  
+- [Run on Hasura](https://capsule.dock.nx.digital/console)  
+- [Run on Apollo](https://studio.apollographql.com/sandbox/explorer)  
 
 Here are sample requests that can be run on Hasura by doing the following:
   - click on [Run on Hasura](https://capsule.dock.nx.digital/console)
@@ -67,66 +80,27 @@ query {
 
 ## Modeling
 ```ts
+// NOTE: on ne va pas faire un DSL complexe et complet, pour un comportement différent, plus de contraintes, des valeurs par default, etc... il faudra fait en SQL directement
 type schema = {
-  table: string
-  extends?: [string]
-  columns: {
-    [key: string]: 'string?' | 'integer?' | 'float?' | 'date?'
+  object: string
+  inherits?: [string]
+  fields: {
+    [key: string]: 'text' | 'float' | 'integer' | 'boolean' | 'date' | 'time' | 'timestamp' | 'object'
   }
   comments: {
     table: string
-    [key: column]: string
+    [key: field]: string
   }
-  // NOTE: on ne va pas faire un DSL complexe et complet.
-  // Une contrainte d'unicité sera créer auto
-  // pour un comportement différent, plus de contraintes, des valeurs par default, etc..
-  // il faudra fait en SQL directement
-
-  // constrains: {
-  //   unique: ['uid', 'name', 'country', 'currency', 'issuer', 'share_number']
-  // },
 }
-
-// Requête SQL
-fetch('https://capsule.dock.nx.digital/v2/query', {
-  method: 'POST',
-  headers: {
-    'content-type': 'application/json',
-  },
-  body: JSON.stringify({
-    type: 'bulk',
-    source: 'default',
-    args: [
-      {
-        type: 'run_sql',
-        args: {
-          source: 'default',
-          sql: `
-CREATE TABLE "equity" (
-  "issuer" VARCHAR NOT NULL,
-  "share_number" INTEGER NOT NULL,
-  CONSTRAINT "equity_unique" UNIQUE ("uid", "name", "country", "currency", "issuer", "share_number"),
-  CONSTRAINT "PK_equity_id" PRIMARY KEY ("id")
-) INHERITS (instrument);
-COMMENT ON TABLE "equity" IS 'This is the equity table';
-COMMENT ON COLUMN "equity"."issuer" IS 'This is the issuer of the equity table';
-`,
-          cascade: false,
-          read_only: false,
-        },
-      },
-    ],
-  }),
-})
 ```
 
 ## List all classes, info, descriptions
 ```gql
 query {
   schema {
-    table
-    extends
-    columns
+    object
+    inherits
+    fields
     comments
   }
 }
@@ -134,20 +108,23 @@ query {
 ## Create a new class
 ```gql
 mutation {
-  schema(args: {
-    table: 'equity',
-    extends: ['instrument', 'audit'],
-    columns: {
-      issuer: 'string',
-      share_number: 'integer',
+  insert_schema_one(object: {
+    object: "instrument",
+    inherits: [
+      "resolution"
+    ],
+    fields: {
+      uid: "text",
+      name: "text",
+      country: "text",
+      currency: "text"
     },
     comments: {
-      table: 'This is the table users'
-      issuer: 'string',
-      share_number: 'integer',
-    },
+      object: "This is the instrument table",
+      uid: "This is the instrument identifier used internally by NeoXam or his client"
+    }
   }) {
-    table
+    object
   }
 }
 ```
