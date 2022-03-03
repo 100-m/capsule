@@ -1,31 +1,42 @@
 # Capsule Documentation
 
+This [documentation (capsule.nx.digital)](https://capsule.nx.digital/) is hosted on [github](https://github.com/100-m/capsule) and can be [edited directly there](https://github.com/100-m/capsule/edit/main/README.md).
+
+The API is accessible on https://capsule.dock.nx.digital. Postgres and Hasura run on an AWS server dock and via [this configuration](https://github.com/100-m/capsule/blob/main/docker-compose.yml).
+
 Capsule is a Research & Development project developed by NeoXam Lab for a data management system with the following features:
 - [-] Database with authorisation capabilities, user or role or feature or row level based
 - [-] Database with audit capabilities, history, rollback
 - [x] Database with validation capabilities, 4-eyes, resolution
 - [ ] Database with bitemporality capabilities, as-at and as-of
-- [x] Database with modeling capabilities
-- [0] Database with business rules capabilities, database-server or application-server (lambda)
-- [ ] Database with computed field capabilities, stored or virtual
+- [ ] Database with multi-source capabilities
+- [x] Database with hierarchic capabilities, inheritance, relations
+- [-] Database with validation capabilities, data integration
+- [x] System with modeling capabilities
+- [x] System with business rules capabilities, database-level or application-level (lambda) based
+- [ ] System with computed field capabilities, stored or virtual
 - [ ] System with dependency graph capabilities
 - [ ] System with workflow / scheduling capabilities
+- [ ] System with cross-filering capabilities
+- [ ] System with search capabilities
+- [ ] System with quality-check capabilities
 - [x] API in GraphQL & Rest
-- [x] API documented
+- [x] API with realtime capabilities
+- [x] API documentation
+- [ ] SDK with methods:
+  - version
+  - login/logout
+  - create/delete = modeling
+  - call = business_object or business_rule (log equiivalent sql/rest/graphql requests)
+  - realtime (include store + vue)
+- [x] Playground Back ([Hasura](https://capsule.dock.nx.digital/console) or [Apollo](https://studio.apollographql.com/sandbox/explorer) console)
+- [ ] Playground Front (Code editor + Forms)
 
-The documentation is located here https://github.com/100-m/capsule and can be edited directly on github.  
-The API runs on https://capsule.dock.nx.digital via [this configuration](https://github.com/100-m/capsule/blob/main/docker-compose.yml).  
-The documentation , and will reflect immediately any change on the GraphQL API.
-
-- [Edit on github](https://github.com/100-m/capsule/edit/main/README.md)  
-- [Run on Hasura](https://capsule.dock.nx.digital/console)  
-- [Run on Apollo](https://studio.apollographql.com/sandbox/explorer)  
-
-Here are sample requests that can be run on Hasura by doing the following:
-  - click on [Run on Hasura](https://capsule.dock.nx.digital/console)
-  - copy a request example bellow
-  - paste the request on the central panel, bellow "GraphiQL >"
-  - click on the play ">" button
+Usage:
+- click on [Run on Hasura](https://capsule.dock.nx.digital/console)
+- copy a request example bellow
+- paste the request on the central panel, bellow "GraphiQL >"
+- click on the play ">" button
 
 ## Propose an instrument (an equity here)
 ```gql
@@ -81,7 +92,7 @@ query {
 ## Modeling
 ```ts
 // NOTE: on ne va pas faire un DSL complexe et complet, pour un comportement différent, plus de contraintes, des valeurs par default, etc... il faudra fait en SQL directement
-type schema = {
+type business_object = {
   object: string
   inherits?: [string]
   fields: {
@@ -97,7 +108,7 @@ type schema = {
 ## List all classes, info, descriptions
 ```gql
 query {
-  schema {
+  business_object {
     object
     inherits
     fields
@@ -105,10 +116,10 @@ query {
   }
 }
 ```
-## Create a new class
+## Create a business object
 ```gql
 mutation {
-  insert_schema_one(object: {
+  insert_business_object_one(object: {
     object: "instrument",
     inherits: [
       "resolution"
@@ -122,6 +133,63 @@ mutation {
     comments: {
       object: "This is the instrument table",
       uid: "This is the instrument identifier used internally by NeoXam or his client"
+    }
+  }) {
+    object
+  }
+}
+```
+
+## Create a business rule
+```gql
+mutation {
+  insert_business_rule_one(object: {
+    rule: "approve",
+    input: {
+      instrument_id: "integer",
+    },
+    output: "instrument",
+    language: "sql",
+    content: """
+      UPDATE instrument SET resolution_status = 'approved', resolution_date = CURRENT_TIMESTAMP, resolution_user_id = 1000
+      WHERE id = instrument_id
+      RETURNING *;
+    """,
+    comments: {
+      rule: "This is the rule function",
+      instrument_id: "This is the instrument identifier used internally by NeoXam or his client"
+    }
+  }) {
+    object
+  }
+}
+# OR
+mutation {
+  insert_business_rule_one(object: {
+    rule: "approve",
+    inputs: {
+      instrument_id: "integer",
+    },
+    output: null,
+    language: "sql",
+    content: """
+      // Provided JS function are
+      // execute(sql: string) [native]
+      // notice/log/info/debug(text: string) [wrap elog]
+      // select(object: string, id: number) [wrap execute]
+      // insert(object: object)
+      // update(object: object)
+      // upsert(object: object)
+      // delete(object: object)
+      const instrument = select('instrument', instrument_id)
+      instrument.resolution_status = 'approved'
+      instrument.resolution_date = new Date() || CURRENT_TIMESTAMP
+      instrument.resolution_user = CURRENT_USER
+      update(instrument)
+    """,
+    comments: {
+      rule: "This is the rule function",
+      instrument_id: "This is the instrument identifier used internally by NeoXam or his client"
     }
   }) {
     object

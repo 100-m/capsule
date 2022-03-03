@@ -18,14 +18,14 @@ CREATE TYPE "status" AS ENUM ('rejected', 'approved');
 CREATE TYPE "role" AS ENUM ('user', 'steward', 'admin', 'robot');
 CREATE TABLE "user" (
   "id" SERIAL NOT NULL,
-  "role" role NOT NULL,
+  "role" "role" NOT NULL,
   CONSTRAINT "PK_user" PRIMARY KEY ("id")
 );
 CREATE TABLE "resolution" (
   "source" "source" NOT NULL DEFAULT 'manual',
   "update_user_id" INTEGER NOT NULL DEFAULT 1,
   "update_date" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "resolution_status" status,
+  "resolution_status" "status",
   "resolution_date" TIMESTAMPTZ,
   "resolution_user_id" INTEGER
 );
@@ -121,6 +121,19 @@ BEGIN
 
 END$$;
 
+-- TODO: propose
+-- BONUS: insert/update/upsert/delete
+-- SELECT insert('equity', $${
+--   "uid": "FR-297920657",
+--   "name": "EPA:BNP",
+--   "country": "FR",
+--   "currency": "EUR",
+--   "issuer": "BNP",
+--   "share_number": 730372026,
+--   "source": "manuel",
+--   "user_id": 1
+-- }$$::jsonb);
+
 INSERT INTO instrument (uid, name, country, currency) VALUES ('FR-018066960', 'AF-PRIVATE-DEBT', 'FR', 'EUR');
 INSERT INTO equity (uid, name, country, currency, issuer, share_number) VALUES ('FR-297920657', 'EPA:BNP', 'FR', 'EUR', 'BNP', '730372026');
 INSERT INTO preferred (uid, name, country, currency, issuer, share_number, rate) VALUES ('FR-320404407', 'NASDAQ:TSLA', 'US', 'USD', 'TESLA', '194491300', 0.07);
@@ -138,62 +151,3 @@ INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (8, '2026-01-01', 'U
 INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (8, '2027-01-01', 'USD', 0.023);
 INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (9, '2022-01-01', 'USD', 0.07);
 INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (9, '2023-01-01', 'USD', 0.07);
-
-/*
-CREATE EXTENSION IF NOT EXISTS plv8;
-DROP FUNCTION IF EXISTS insert;
-DROP FUNCTION IF EXISTS update;
-DROP FUNCTION IF EXISTS delete;
-DROP TABLE IF EXISTS result;
-
-CREATE FUNCTION
-insert(object_class text, object jsonb)
-RETURNS result
-LANGUAGE plv8 IMMUTABLE STRICT AS $$
-
-  const { prepare, execute, find_function, elog } = plv8
-  const { id } = execute(`INSERT INTO "${object_class}" (${Object.keys(object).join(',')}) values (${Object.values(object).join(',')})`)
-  return object
-
-$$;
-SELECT insert("equity", '{
-  "uid": "FR-297920657",
-  "name": "EPA:BNP",
-  "country": "FR",
-  "currency": "EUR",
-  "issuer": "BNP",
-  "share_number": 730372026,
-  "source": "manuel",
-  "user_id": 1
-}');
-
-CREATE FUNCTION
-delete(class text, object jsonb)
-RETURNS integer
-LANGUAGE plpgsql
-AS $$BEGIN
-
-  RETURN 1;
-
-END$$;
-
-CREATE FUNCTION
-update(class text, object jsonb)
-RETURNS integer
-LANGUAGE plpgsql
-AS $$BEGIN
-
-  RETURN 1;
-
-END$$;
-
-CREATE FUNCTION
-propose(class text, object jsonb)
-RETURNS integer
-LANGUAGE plpgsql
-AS $$BEGIN
-
-  RETURN 1;
-
-END$$;
-*/
