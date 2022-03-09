@@ -1,4 +1,5 @@
-import {
+import * as utils from './utils.js'
+const {
   execute_hasura_sql,
   execute,
   log,
@@ -7,7 +8,7 @@ import {
   business_rule_insert_sql,
   business_rule_delete_sql,
   trigger_table_insert_sql,
-} from './utils.js'
+} = utils
 
 const scenarios_modeling = [
   {
@@ -18,7 +19,7 @@ const scenarios_modeling = [
         input: [
           {
             object: 'instrument',
-            inherits: ['resolution'],
+            inherits: ['addin'],
             fields: { uid: 'string', name: 'string', country: 'string', currency: 'string' },
             comments: {
               object: 'This is the instrument table',
@@ -35,9 +36,11 @@ CREATE TABLE "instrument" (
   "currency" TEXT NOT NULL,
   CONSTRAINT "UNIQUE_instrument" UNIQUE ("uid", "name", "country", "currency"),
   CONSTRAINT "PK_instrument" PRIMARY KEY ("id")
-) INHERITS ("resolution");
+) INHERITS ("addin");
 COMMENT ON TABLE "instrument" IS 'This is the instrument table';
-COMMENT ON COLUMN "instrument"."uid" IS 'This is the instrument identifier used internally by NeoXam or his client';
+
+CREATE TRIGGER history BEFORE INSERT OR UPDATE OR DELETE ON "instrument"
+FOR EACH ROW EXECUTE FUNCTION history();
 
 SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg_track_table","args":{"table":{"name":"instrument","schema":"public"}}}');
 `,
@@ -58,6 +61,8 @@ CREATE TABLE "equity" (
   CONSTRAINT "PK_equity" PRIMARY KEY ("id")
 ) INHERITS ("instrument");
 
+CREATE TRIGGER history BEFORE INSERT OR UPDATE OR DELETE ON "equity"
+FOR EACH ROW EXECUTE FUNCTION history();
 
 SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg_track_table","args":{"table":{"name":"equity","schema":"public"}}}');
 `,
@@ -77,6 +82,8 @@ CREATE TABLE "preferred" (
   CONSTRAINT "PK_preferred" PRIMARY KEY ("id")
 ) INHERITS ("equity");
 
+CREATE TRIGGER history BEFORE INSERT OR UPDATE OR DELETE ON "preferred"
+FOR EACH ROW EXECUTE FUNCTION history();
 
 SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg_track_table","args":{"table":{"name":"preferred","schema":"public"}}}');
 `,
@@ -96,6 +103,8 @@ CREATE TABLE "bond" (
   CONSTRAINT "PK_bond" PRIMARY KEY ("id")
 ) INHERITS ("instrument");
 
+CREATE TRIGGER history BEFORE INSERT OR UPDATE OR DELETE ON "bond"
+FOR EACH ROW EXECUTE FUNCTION history();
 
 SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg_track_table","args":{"table":{"name":"bond","schema":"public"}}}');
 `,
@@ -119,6 +128,8 @@ CREATE TABLE "coupon" (
   CONSTRAINT "PK_coupon" PRIMARY KEY ("id")
 );
 
+CREATE TRIGGER history BEFORE INSERT OR UPDATE OR DELETE ON "coupon"
+FOR EACH ROW EXECUTE FUNCTION history();
 
 SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg_track_table","args":{"table":{"name":"coupon","schema":"public"}}}');
 `,
@@ -141,7 +152,7 @@ SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg
             },
             output: 'instrument',
             code: `RETURN QUERY
-UPDATE instrument SET resolution_status = 'approved', resolution_date = CURRENT_TIMESTAMP, resolution_user_id = 1000
+UPDATE instrument SET resolution = 'approved'
 WHERE id = instrument_id
 RETURNING *;`,
             comments: {
@@ -158,7 +169,7 @@ LANGUAGE plpgsql VOLATILE
 AS $function$BEGIN
 
 RETURN QUERY
-UPDATE instrument SET resolution_status = 'approved', resolution_date = CURRENT_TIMESTAMP, resolution_user_id = 1000
+UPDATE instrument SET resolution = 'approved'
 WHERE id = instrument_id
 RETURNING *;
 
@@ -178,7 +189,7 @@ SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg
             },
             output: 'instrument',
             code: `RETURN QUERY
-UPDATE instrument SET resolution_status = 'rejected', resolution_date = CURRENT_TIMESTAMP, resolution_user_id = 1000
+UPDATE instrument SET resolution = 'rejected'
 WHERE id = instrument_id
 RETURNING *;`,
             comments: {},
@@ -192,7 +203,7 @@ LANGUAGE plpgsql VOLATILE
 AS $function$BEGIN
 
 RETURN QUERY
-UPDATE instrument SET resolution_status = 'rejected', resolution_date = CURRENT_TIMESTAMP, resolution_user_id = 1000
+UPDATE instrument SET resolution = 'rejected'
 WHERE id = instrument_id
 RETURNING *;
 
@@ -211,7 +222,7 @@ SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg
             output: 'instrument',
             code: `RETURN QUERY
 SELECT * FROM instrument
-WHERE resolution_status IS NULL;`,
+WHERE resolution IS NULL;`,
             comments: {},
           },
         ],
@@ -224,7 +235,7 @@ AS $function$BEGIN
 
 RETURN QUERY
 SELECT * FROM instrument
-WHERE resolution_status IS NULL;
+WHERE resolution IS NULL;
 
 END$function$;
 
@@ -244,7 +255,7 @@ SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg
             output: 'instrument',
             code: `RETURN QUERY
 SELECT * FROM instrument
-WHERE instrument.resolution_status = 'approved'
+WHERE instrument.resolution = 'approved'
 AND instrument.uid = golden.uid
 ORDER BY instrument.source DESC
 LIMIT 1;`,
@@ -260,7 +271,7 @@ AS $function$BEGIN
 
 RETURN QUERY
 SELECT * FROM instrument
-WHERE instrument.resolution_status = 'approved'
+WHERE instrument.resolution = 'approved'
 AND instrument.uid = golden.uid
 ORDER BY instrument.source DESC
 LIMIT 1;
@@ -271,44 +282,45 @@ END$function$;
 SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg_track_function","args":{"function":{"name":"golden","schema":"public"},"configuration":{"exposed_as":"query"},"source":"default"}}');
 `,
       },
-      //       {
-      //         input: [
-      //           {
-      //             rule: 'reject',
-      //             input: {
-      //               instrument_id: 'integer',
-      //             },
-      //             language: 'js',
-      //             code: `const instrument = select('instrument', instrument_id)
-      // instrument.resolution_status = 'rejected'
-      // instrument.resolution_date = new Date() || CURRENT_TIMESTAMP
-      // instrument.resolution_user = CURRENT_USER
-      // update('instrument', instrument)`,
-      //             comments: {
-      //               rule: 'This is the rule function',
-      //               instrument_id: 'This is the instrument identifier used internally by NeoXam or his client',
-      //             },
-      //           },
-      //         ],
-      //         output: `
-      // CREATE FUNCTION
-      // reject(instrument_id INTEGER)
-      // RETURNS VOID
-      // LANGUAGE plv8
-      // AS $function$BEGIN
+//       {
+//         input: [
+//           {
+//             rule: 'reject',
+//             input: {
+//               instrument_id: 'integer',
+//             },
+//             language: 'js',
+//             code: `const instrument = select('instrument', instrument_id)
+// instrument.resolution = 'rejected'
+// instrument.resolution_date = new Date() || CURRENT_TIMESTAMP
+// instrument.resolution_user = CURRENT_USER
+// update('instrument', instrument)`,
+//             comments: {
+//               rule: 'This is the rule function',
+//               instrument_id: 'This is the instrument identifier used internally by NeoXam or his client',
+//             },
+//           },
+//         ],
+//         output: `
+// CREATE FUNCTION
+// reject(instrument_id INTEGER)
+// RETURNS VOID
+// LANGUAGE plv8
+// AS $function$BEGIN
 
-      // const instrument = select('instrument', instrument_id)
-      // instrument.resolution_status = 'rejected'
-      // instrument.resolution_date = new Date() || CURRENT_TIMESTAMP
-      // instrument.resolution_user = CURRENT_USER
-      // update('instrument', instrument)
+// ${['log', 'execute', 'business_object_delete_sql', 'business_object_insert_sql'].map(v => `const ${v} = ${utils[v].toString()}`).join('\n')}
+// const instrument = select('instrument', instrument_id)
+// instrument.resolution = 'rejected'
+// instrument.resolution_date = new Date() || CURRENT_TIMESTAMP
+// instrument.resolution_user = CURRENT_USER
+// update('instrument', instrument)
 
-      // END$function$;
-      // COMMENT ON FUNCTION reject(instrument_id integer) IS 'This is the rule function';
+// END$function$;
+// COMMENT ON FUNCTION reject(instrument_id integer) IS 'This is the rule function';
 
-      // SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg_track_function","args":{"function":{"name":"reject","schema":"public"},"configuration":{"exposed_as":"mutation"},"source":"default"}}');
-      // `,
-      //       },
+// SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg_track_function","args":{"function":{"name":"reject","schema":"public"},"configuration":{"exposed_as":"mutation"},"source":"default"}}');
+// `,
+//       },
     ],
     business_rule_insert_sql,
   },
@@ -324,24 +336,19 @@ CREATE FUNCTION business_object()
 RETURNS TRIGGER
 LANGUAGE plv8 AS $trigger$
 
-const log = ${log.toString()}
-const execute = ${execute.toString()}
-const business_object_delete_sql = ${business_object_delete_sql.toString()}
-const business_object_insert_sql = ${business_object_insert_sql.toString()}
+${['log', 'execute', 'business_object_delete_sql', 'business_object_insert_sql'].map(v => `const ${v} = ${utils[v].toString()}`).join('\n')}
 
 if (TG_OP === 'INSERT') {
   execute(business_object_insert_sql(NEW))
-  return NEW
 }
 if (TG_OP === 'UPDATE') {
   execute(business_object_delete_sql(OLD))
   execute(business_object_insert_sql(NEW))
-  return NEW
 }
 if (TG_OP === 'DELETE') {
   execute(business_object_delete_sql(OLD))
-  return NEW
 }
+return NEW
 
 $trigger$;
 CREATE TABLE "business_object" (
@@ -364,31 +371,27 @@ CREATE FUNCTION business_rule()
 RETURNS TRIGGER
 LANGUAGE plv8 AS $trigger$
 
-const log = ${log.toString()}
-const execute = ${execute.toString()}
-const business_rule_delete_sql = ${business_rule_delete_sql.toString()}
-const business_rule_insert_sql = ${business_rule_insert_sql.toString()}
+${['log', 'execute', 'business_rule_delete_sql', 'business_rule_insert_sql'].map(v => `const ${v} = ${utils[v].toString()}`).join('\n')}
 
 if (TG_OP === 'INSERT') {
   execute(business_rule_insert_sql(NEW))
-  return NEW
 }
 if (TG_OP === 'UPDATE') {
   execute(business_rule_delete_sql(OLD))
   execute(business_rule_insert_sql(NEW))
-  return NEW
 }
 if (TG_OP === 'DELETE') {
   execute(business_rule_delete_sql(OLD))
-  return NEW
 }
+return NEW
 
 $trigger$;
 CREATE TABLE "business_rule" (
   "rule" TEXT NOT NULL,
+  "language" TEXT NOT NULL,
+  "type" TEXT NOT NULL,
   "input" JSONB NOT NULL,
   "output" TEXT NOT NULL,
-  "language" TEXT NOT NULL,
   "code" TEXT NOT NULL,
   "comments" JSONB NOT NULL,
   CONSTRAINT "PK_business_rule" PRIMARY KEY ("rule")
@@ -403,11 +406,20 @@ SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg
     trigger_table_insert_sql,
   },
 ]
+const schema = [
+  {
+    name: 'Schema - Multi Source',
+    tests: [{ input: [], output: undefined }],
+    fn: () => {
+      // insert 2 instruments with different source
+    },
+  },
+]
 
-const scenarios = scenarios_modeling
+const scenarios = scenarios_trigger
 
-//! PRE TEST
 console.clear()
+//! PRE TEST
 await execute_hasura_sql(`
 DROP TRIGGER IF EXISTS business_object ON business_object;
 DROP FUNCTION IF EXISTS business_object;
@@ -425,27 +437,52 @@ DROP TABLE IF EXISTS "bond";
 DROP TABLE IF EXISTS "preferred";
 DROP TABLE IF EXISTS "equity";
 DROP TABLE IF EXISTS "instrument";
-DROP TABLE IF EXISTS "resolution";
+DROP TABLE IF EXISTS "addin";
 DROP TABLE IF EXISTS "user";
+DROP TRIGGER IF EXISTS history ON "coupon";
+DROP TRIGGER IF EXISTS history ON "bond";
+DROP TRIGGER IF EXISTS history ON "preferred";
+DROP TRIGGER IF EXISTS history ON "equity";
+DROP TRIGGER IF EXISTS history ON "instrument";
+DROP TRIGGER IF EXISTS history ON "addin";
+DROP TRIGGER IF EXISTS history ON "user";
+DROP FUNCTION IF EXISTS history;
+DROP TABLE IF EXISTS history;
 DROP TYPE IF EXISTS "source";
-DROP TYPE IF EXISTS "status";
+DROP TYPE IF EXISTS "resolution";
 DROP TYPE IF EXISTS "role";
 CREATE TYPE "source" AS ENUM ('manual', 'bloomberg', 'reuters');
-CREATE TYPE "status" AS ENUM ('rejected', 'approved');
+CREATE TYPE "resolution" AS ENUM ('rejected', 'approved');
 CREATE TYPE "role" AS ENUM ('user', 'steward', 'admin', 'robot');
 CREATE TABLE "user" (
   "id" SERIAL NOT NULL,
   "role" "role" NOT NULL,
   CONSTRAINT "PK_user" PRIMARY KEY ("id")
 );
-CREATE TABLE "resolution" (
+CREATE TABLE "addin" (
   "source" "source" NOT NULL DEFAULT 'manual',
-  "update_user_id" INTEGER NOT NULL DEFAULT 1,
-  "update_date" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "resolution_status" "status",
-  "resolution_date" TIMESTAMPTZ,
-  "resolution_user_id" INTEGER
+  "resolution" "resolution"
 );
+CREATE TABLE "history" (
+  "id" SERIAL NOT NULL,
+  "table" TEXT NOT NULL,
+  "row_id" INT NOT NULL,
+  "row" JSONB,
+  "date" TIMESTAMPTZ NOT NULL DEFAULT CLOCK_TIMESTAMP(),
+  CONSTRAINT "PK_history" PRIMARY KEY ("id")
+);
+CREATE FUNCTION history() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER AS $trigger$BEGIN
+
+IF (TG_OP = 'DELETE') THEN
+  INSERT INTO history ("table", "row_id", "row") VALUES (TG_RELNAME, OLD.id, row_to_json(NEW));
+  RETURN OLD;
+ELSE
+  INSERT INTO history ("table", "row_id", "row") VALUES (TG_RELNAME, NEW.id, row_to_json(NEW));
+  RETURN NEW;
+END IF;
+
+END$trigger$;
 `)
 //! RUN TEST
 import { assertEquals, assertRejects } from 'https://deno.land/std@0.127.0/testing/asserts.ts'
@@ -488,52 +525,68 @@ VALUES ('${rule}', '${language}', '${type}', '${JSON.stringify(input)}', '${outp
     .filter(v => v)
     .join('\n'),
 )
-// await execute_hasura_sql(`
-// INSERT INTO instrument (uid, name, country, currency) VALUES ('FR-018066960', 'AF-PRIVATE-DEBT', 'FR', 'EUR');
-// INSERT INTO equity (uid, name, country, currency, issuer, share_number) VALUES ('FR-297920657', 'EPA:BNP', 'FR', 'EUR', 'BNP', '730372026');
-// INSERT INTO preferred (uid, name, country, currency, issuer, share_number, rate) VALUES ('FR-320404407', 'NASDAQ:TSLA', 'US', 'USD', 'TESLA', '194491300', 0.07);
-// INSERT INTO equity (uid, name, country, currency, issuer, share_number) VALUES ('FR-519487830', 'AB-PREF-7%', 'FR', 'EUR', 'ALPHABET', '693264265');
-// INSERT INTO preferred (uid, name, country, currency, issuer, share_number, rate) VALUES ('FR-694964950', 'NASDAQ:GOOGL', 'US', 'USD', 'ALPHABET', '175190113', 0.05);
-// INSERT INTO equity (uid, name, country, currency, issuer, share_number) VALUES ('FR-857828573', 'EPA:AF', 'FR', 'EUR', 'AIR FRANCE KLM', '194491300');
-// INSERT INTO equity (uid, name, country, currency, issuer, share_number) VALUES ('FR-943649527', 'AF-PREF-5%', 'FR', 'EUR', 'AIR FRANCE KLM', '787057726');
-// INSERT INTO bond (uid, name, country, currency, maturity_date) VALUES ('FR-439903446', 'GGL-2027-2.3%', 'FR', 'EUR', '2027-01-01');
-// INSERT INTO bond (uid, name, country, currency, maturity_date) VALUES ('FR-744967405', 'KLM-2023-7%', 'FR', 'EUR', '2023-01-01');
-// INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (8, '2022-01-01', 'USD', 0.023);
-// INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (8, '2023-01-01', 'USD', 0.023);
-// INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (8, '2024-01-01', 'USD', 0.023);
-// INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (8, '2025-01-01', 'USD', 0.023);
-// INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (8, '2026-01-01', 'USD', 0.023);
-// INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (8, '2027-01-01', 'USD', 0.023);
-// INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (9, '2022-01-01', 'USD', 0.07);
-// INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (9, '2023-01-01', 'USD', 0.07);
-// `)
-
 await execute_hasura_sql(`
-SELECT $$1. Valentin propose FR-018066960, pending$$;
 INSERT INTO instrument (uid, name, country, currency) VALUES ('FR-018066960', 'AF-PRIVATE-DEBT', 'FR', 'EUR');
-
-SELECT $$2. Clément approve FR-018066960, valid$$;
-SELECT id FROM candidates();
-SELECT approve(1);
-
-SELECT $$3. Laurent propose FR-297920657, invalid car unauthorized, pas les droits de création$$;
--- INSERT INTO equity (uid, name, country, currency, issuer, share_number) VALUES ('FR-297920657', 'EPA:BNP', 'FR', 'EUR', 'BNP', '730372026');
--- SELECT id FROM candidates();
--- assert number of candidates is the same
-
-SELECT $$4. Serge propose FR-320404407, valid, bypass du 4eyes car superadmin$$;
+INSERT INTO equity (uid, name, country, currency, issuer, share_number) VALUES ('FR-297920657', 'EPA:BNP', 'FR', 'EUR', 'BNP', '730372026');
 INSERT INTO preferred (uid, name, country, currency, issuer, share_number, rate) VALUES ('FR-320404407', 'NASDAQ:TSLA', 'US', 'USD', 'TESLA', '194491300', 0.07);
-
-SELECT $$5. Laurent propose une modification pour FR-018066960, pending$$;
-INSERT INTO instrument (uid, name, country, currency) VALUES ('FR-018066960', 'AF-PRIVATE-DEBTZZZ', 'FR', 'ZZZ');
-
-SELECT $$6. Clément reject la modification de FR-018066960, invalid car rejected$$;
-SELECT id FROM candidates();
-SELECT reject(3);
-
-SELECT $$7. Robot-Bloomberg propose FR-519487830, valid, source Bloomberg$$;
 INSERT INTO equity (uid, name, country, currency, issuer, share_number) VALUES ('FR-519487830', 'AB-PREF-7%', 'FR', 'EUR', 'ALPHABET', '693264265');
+INSERT INTO preferred (uid, name, country, currency, issuer, share_number, rate) VALUES ('FR-694964950', 'NASDAQ:GOOGL', 'US', 'USD', 'ALPHABET', '175190113', 0.05);
+INSERT INTO equity (uid, name, country, currency, issuer, share_number) VALUES ('FR-857828573', 'EPA:AF', 'FR', 'EUR', 'AIR FRANCE KLM', '194491300');
+INSERT INTO equity (uid, name, country, currency, issuer, share_number) VALUES ('FR-943649527', 'AF-PREF-5%', 'FR', 'EUR', 'AIR FRANCE KLM', '787057726');
+INSERT INTO bond (uid, name, country, currency, maturity_date) VALUES ('FR-439903446', 'GGL-2027-2.3%', 'FR', 'EUR', '2027-01-01');
+INSERT INTO bond (uid, name, country, currency, maturity_date) VALUES ('FR-744967405', 'KLM-2023-7%', 'FR', 'EUR', '2023-01-01');
+INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (8, '2022-01-01', 'USD', 0.023);
+INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (8, '2023-01-01', 'USD', 0.023);
+INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (8, '2024-01-01', 'USD', 0.023);
+INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (8, '2025-01-01', 'USD', 0.023);
+INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (8, '2026-01-01', 'USD', 0.023);
+INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (8, '2027-01-01', 'USD', 0.023);
+INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (9, '2022-01-01', 'USD', 0.07);
+INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (9, '2023-01-01', 'USD', 0.07);
 
--- SELECT $$8. Valentin propose DE123 sans la currency, donc invalid car errored, requête mal former, hack du truc$$;
--- INSERT INTO preferred (uid, name, country, issuer, share_number, rate) VALUES ('FR-694964950', 'NASDAQ:GOOGL', 'US', 'ALPHABET', '175190113', 0.05);
+SELECT reject(id) FROM candidates() WHERE "uid" = 'FR-018066960' AND "country" = 'FR';
+SELECT approve(id) FROM candidates() WHERE "uid" = 'FR-018066960' AND "country" = 'FR';
+SELECT approve(id) FROM candidates() WHERE "uid" = 'FR-018066960' AND "country" = 'FR'; -- SAME QUERY AS ABOVE, SHOULD NOT APPEAR IN history TABLE
+UPDATE instrument SET "resolution" = 'approved' WHERE "uid" = 'FR-018066960' AND "country" = 'FR'; -- SAME QUERY AS ABOVE, SHOULD NOT APPEAR IN history TABLE
+UPDATE instrument SET "resolution" = 'approved' WHERE "uid" = 'FR-018066960' AND "country" = 'FR'; -- SAME QUERY AS ABOVE, SHOULD NOT APPEAR IN history TABLE
+
+INSERT INTO instrument (uid, name, country, currency) VALUES ('FR-018066960', 'AF-PRIVATE-DEBT', 'US', 'USD');
+SELECT reject(id) FROM candidates() WHERE "uid" = 'FR-018066960' AND "country" = 'US';
+UPDATE history SET "date" = '2020-01-01' WHERE id IN(SELECT max(id) FROM history); -- force date for last history entry
+
+
+SELECT * FROM history WHERE "date" < '2021-01-01';
+SELECT * FROM history WHERE row->>'uid' = 'FR-018066960'; -- THIS WORKS
+SELECT * FROM history WHERE row['uid']::text = 'FR-018066960'; -- THIS DOESN'T WORKS
+-- UPDATE history SET "date" = '2020-01-01' WHERE "table" = 'instrument' AND row->>'uid' = 'FR-018066960' AND row->>'country' = 'FR'; -- THIS DOESN'T WORKS BECAUSE OF DUPLICATE ROWS
+
+INSERT INTO instrument (uid, name, country, currency) VALUES ('FR-018066960', 'AF-PRIVATE-DEBT', 'IT', 'EUR');
+
+-- SELECT id FROM candidates();
+-- SELECT row['resolution'] FROM history WHERE "table" = 'instrument' AND "row_id" = 1 AND date < '2022-03-10' ORDER BY date DESC LIMIT 2;
+
 `)
+
+// TODO:
+// 3. add user roles/rights for row level (read, write, update, delete)
+// 4. add user roles/business logic for feature level (admin, no 4eyes)
+
+// await execute_hasura_sql(`
+// SELECT $$1. Valentin propose FR-018066960, pending$$;
+// INSERT INTO instrument (uid, name, country, currency) VALUES ('FR-018066960', 'AF-PRIVATE-DEBT', 'FR', 'EUR');
+
+// SELECT $$2. Clément approve FR-018066960, valid$$;
+// SELECT id FROM candidates();
+// SELECT approve(1);
+
+// SELECT $$3. Laurent propose FR-297920657, invalid car unauthorized, pas les droits de création$$;
+// -- INSERT INTO equity (uid, name, country, currency, issuer, share_number) VALUES ('FR-297920657', 'EPA:BNP', 'FR', 'EUR', 'BNP', '730372026');
+// -- SELECT id FROM candidates();
+// -- assert number of candidates is the same
+
+// SELECT $$4. Serge propose FR-320404407, valid, bypass du 4eyes car superadmin$$;
+// INSERT INTO preferred (uid, name, country, currency, issuer, share_number, rate) VALUES ('FR-320404407', 'NASDAQ:TSLA', 'US', 'USD', 'TESLA', '194491300', 0.07);
+
+// SELECT $$5. Robot-Bloomberg propose FR-519487830, source Bloomberg$$;
+// INSERT INTO equity (uid, name, country, currency, issuer, share_number, source) VALUES ('FR-519487830', 'AB-PREF-7%', 'FR', 'EUR', 'ALPHABET', '693264265', 'bloomberg');
+// `)

@@ -5,32 +5,31 @@ This [documentation (capsule.nx.digital)](https://capsule.nx.digital/) is hosted
 The API is accessible on https://capsule.dock.nx.digital. Postgres and Hasura run on an AWS server dock and via [this configuration](https://github.com/100-m/capsule/blob/main/docker-compose.yml).
 
 Capsule is a Research & Development project developed by NeoXam Lab for a data management system with the following features:
-- [-] Database with authorisation capabilities, user or role or feature or row level based
-- [-] Database with audit capabilities, history, rollback
+- [ ] Database with authorisation capabilities, user or role or feature or row level based
 - [x] Database with validation capabilities, 4-eyes, resolution
-- [ ] Database with bitemporality capabilities, as-at and as-of
-- [ ] Database with multi-source capabilities
+- [x] Database with multi-source capabilities
+- [-] Database with audit/bitemporality capabilities, as-at and as-of, history, rollback
 - [x] Database with hierarchic capabilities, inheritance, relations
-- [-] Database with validation capabilities, data integration
 - [x] System with modeling capabilities
 - [x] System with business rules capabilities, database-level or application-level (lambda) based
 - [ ] System with computed field capabilities, stored or virtual
 - [ ] System with dependency graph capabilities
-- [ ] System with workflow / scheduling capabilities
-- [ ] System with cross-filering capabilities
+- [ ] System with workflow capabilities, scheduling, run cmd, wait for, user input/validation
+- [ ] System with cross-filtering capabilities
 - [ ] System with search capabilities
-- [ ] System with quality-check capabilities
+- [ ] System with quality-check capabilities (= business rules ?)
+- [x] System with testing capabilities
 - [x] API in GraphQL & Rest
 - [x] API with realtime capabilities
 - [x] API documentation
-- [ ] SDK with methods:
-  - version
-  - login/logout
-  - create/delete = modeling
-  - call = business_object or business_rule (log equiivalent sql/rest/graphql requests)
-  - realtime (include store + vue)
 - [x] Playground Back ([Hasura](https://capsule.dock.nx.digital/console) or [Apollo](https://studio.apollographql.com/sandbox/explorer) console)
 - [ ] Playground Front (Code editor + Forms)
+- [ ] SDK with methods:
+  1. version
+  2. login/logout
+  3. create/delete = modeling
+  4. call = business_object or business_rule (log equivalent sql/rest/graphql requests)
+  5. realtime (include store + vue)
 
 Usage:
 - click on [Run on Hasura](https://capsule.dock.nx.digital/console)
@@ -39,6 +38,7 @@ Usage:
 - click on the play ">" button
 
 ## Propose an instrument (an equity here)
+> Note: source can be omitted (manual by default), user_id can be forced (for superadmin only)
 ```gql
 mutation {
   insert_equity_one(object: {
@@ -175,7 +175,7 @@ mutation {
     content: """
       // Provided JS function are
       // execute(sql: string) [native]
-      // notice/log/info/debug(text: string) [wrap elog]
+      // log/info/debug(text: string) [wrap elog]
       // select(object: string, id: number) [wrap execute]
       // insert(object: object)
       // update(object: object)

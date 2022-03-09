@@ -11,10 +11,10 @@ DROP TABLE IF EXISTS "instrument";
 DROP TABLE IF EXISTS "resolution";
 DROP TABLE IF EXISTS "user";
 DROP TYPE IF EXISTS "source";
-DROP TYPE IF EXISTS "status";
+DROP TYPE IF EXISTS "resolution";
 DROP TYPE IF EXISTS "role";
 CREATE TYPE "source" AS ENUM ('manual', 'bloomberg', 'reuters');
-CREATE TYPE "status" AS ENUM ('rejected', 'approved');
+CREATE TYPE "resolution" AS ENUM ('rejected', 'approved');
 CREATE TYPE "role" AS ENUM ('user', 'steward', 'admin', 'robot');
 CREATE TABLE "user" (
   "id" SERIAL NOT NULL,
@@ -23,11 +23,7 @@ CREATE TABLE "user" (
 );
 CREATE TABLE "resolution" (
   "source" "source" NOT NULL DEFAULT 'manual',
-  "update_user_id" INTEGER NOT NULL DEFAULT 1,
-  "update_date" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "resolution_status" "status",
-  "resolution_date" TIMESTAMPTZ,
-  "resolution_user_id" INTEGER
+  "resolution" "resolution",
 );
 CREATE TABLE "instrument" (
   "id" SERIAL NOT NULL,
@@ -74,7 +70,7 @@ LANGUAGE plpgsql
 AS $$BEGIN
 
   RETURN QUERY
-  UPDATE instrument SET resolution_status = 'approved', resolution_date = CURRENT_TIMESTAMP, resolution_user_id = 1000
+  UPDATE instrument SET resolution = 'approved'
   WHERE id = instrument_id
   RETURNING *;
 
@@ -87,7 +83,7 @@ LANGUAGE plpgsql
 AS $$BEGIN
 
   RETURN QUERY
-  UPDATE instrument SET resolution_status = 'rejected', resolution_date = CURRENT_TIMESTAMP, resolution_user_id = 1000
+  UPDATE instrument SET resolution = 'rejected'
   WHERE id = instrument_id
   RETURNING *;
 
@@ -101,7 +97,7 @@ AS $$BEGIN
 
   RETURN QUERY
   SELECT * FROM instrument
-  WHERE resolution_status IS NULL;
+  WHERE resolution IS NULL;
 
 END$$;
 
@@ -114,7 +110,7 @@ BEGIN
 
   RETURN QUERY
   SELECT * FROM instrument
-  WHERE instrument.resolution_status = 'approved'
+  WHERE instrument.resolution = 'approved'
   AND instrument.uid = golden.uid
   ORDER BY instrument.source DESC
   LIMIT 1;

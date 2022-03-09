@@ -1,3 +1,9 @@
+// @ts-check
+// https://codewithhugo.com/jsdoc-typescript-typings-types-d-ts/
+// npm i -g jsdoc tsd-jsdoc
+// mkdir .doc
+// ln -s $NVM_BIN/../lib/node_modules/tsd-jsdoc/dist .doc/tsd
+// jsdoc -t .doc/tsd -r utils.js -d .doc/types
 //! MOCK plv8
 export const NOTICE = 'NOTICE'
 export const plv8 = {
@@ -27,6 +33,10 @@ export const plv8 = {
   },
   elog: console.log,
 }
+/**
+ * @param {string} sql
+ * @returns {Promise<Response>}
+ */
 export const execute_hasura_sql = async sql => {
   const response = await fetch('https://capsule.dock.nx.digital/v2/query', {
     method: 'POST',
@@ -53,7 +63,9 @@ export const execute_hasura_sql = async sql => {
       2,
     ),
   })
-  if (response.status !== 200) console.error(sql, response.status, await response.text())
+  // if (response.status !== 200) console.error(sql, response.status, await response.text())
+  if (response.status !== 200) throw new Error(await response.text())
+  console.log(response.status, sql.split('\n').filter(v => v)[0])
   return response
 }
 
@@ -130,13 +142,17 @@ CREATE TABLE "${object}" (
 )${str_inherits};
 ${str_comments}
 
+CREATE TRIGGER history BEFORE INSERT OR UPDATE OR DELETE ON "${object}"
+FOR EACH ROW EXECUTE FUNCTION history();
+
 SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg_track_table","args":{"table":{"name":"${object}","schema":"public"}}}');
 `
 }
 export const business_object_delete_sql = ({ object }) => {
   if (!object) throw new Error(`No object specified`)
   return `
-DROP TABLE ${object};
+DROP TRIGGER history ON "${object}";
+DROP TABLE "${object}";
 SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg_untrack_table","args":{"table":{"name":"${object}","schema":"public"}}}');
 `
 }
@@ -207,17 +223,15 @@ const business_object_insert_sql = ${business_object_insert_sql.toString()}
 
 if (TG_OP === 'INSERT') {
   execute(business_object_insert_sql(NEW))
-  return NEW
 }
 if (TG_OP === 'UPDATE') {
   execute(business_object_delete_sql(OLD))
   execute(business_object_insert_sql(NEW))
-  return NEW
 }
 if (TG_OP === 'DELETE') {
   execute(business_object_delete_sql(OLD))
-  return NEW
 }
+return NEW
 
 $trigger$;
 CREATE TABLE "business_object" (
@@ -244,17 +258,15 @@ const business_rule_insert_sql = ${business_rule_insert_sql.toString()}
 
 if (TG_OP === 'INSERT') {
   execute(business_rule_insert_sql(NEW))
-  return NEW
 }
 if (TG_OP === 'UPDATE') {
   execute(business_rule_delete_sql(OLD))
   execute(business_rule_insert_sql(NEW))
-  return NEW
 }
 if (TG_OP === 'DELETE') {
   execute(business_rule_delete_sql(OLD))
-  return NEW
 }
+return NEW
 
 $trigger$;
 CREATE TABLE "business_rule" (
