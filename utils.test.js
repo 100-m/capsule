@@ -295,7 +295,24 @@ SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg
 
 const scenarios = scenarios_modeling
 
+//! RUN TEST
 console.clear()
+import { assertEquals, assertRejects } from 'https://deno.land/std@0.127.0/testing/asserts.ts'
+for await (const { name, tests, ...rest } of scenarios) {
+  for await (const [i, { input, output, error }] of Object.entries(tests)) {
+    for await (const [k, fn] of Object.entries(rest)) {
+      if (error) await Deno.test(`${name} #${k} #${i}`, async () => await assertRejects(async () => await fn(...input), Error, error))
+      else await Deno.test(`${name} #${k} #${i}`, async () => assertEquals(await fn(...input), output))
+      // if (!error) {
+      //   const sql = await fn(...input)
+      //   const response = await execute_hasura_sql(sql)
+      //   console.log(`${name} #${k} #${i}`, response.status, await response.text())
+      // }
+    }
+  }
+}
+export default scenarios
+
 //! PRE TEST
 await execute_hasura_sql(`
 CREATE EXTENSION IF NOT EXISTS plv8;
@@ -367,22 +384,6 @@ END IF;
 
 END$trigger$;
 `)
-//! RUN TEST
-import { assertEquals, assertRejects } from 'https://deno.land/std@0.127.0/testing/asserts.ts'
-for await (const { name, tests, ...rest } of scenarios) {
-  for await (const [i, { input, output, error }] of Object.entries(tests)) {
-    for await (const [k, fn] of Object.entries(rest)) {
-      if (error) await Deno.test(`${name} #${k} #${i}`, async () => await assertRejects(async () => await fn(...input), Error, error))
-      else await Deno.test(`${name} #${k} #${i}`, async () => assertEquals(await fn(...input), output))
-      // if (!error) {
-      //   const sql = await fn(...input)
-      //   const response = await execute_hasura_sql(sql)
-      //   console.log(`${name} #${k} #${i}`, response.status, await response.text())
-      // }
-    }
-  }
-}
-export default scenarios
 //! POST TEST
 await execute_hasura_sql(trigger_table_insert_sql('business_object'))
 await execute_hasura_sql(trigger_table_insert_sql('business_rule'))
@@ -440,9 +441,7 @@ SELECT reject(id) FROM candidates() WHERE "uid" = 'FR-018066960' AND "country" =
 -- UPDATE history SET "date" = '2020-01-01' WHERE "table" = 'instrument' AND row->>'uid' = 'FR-018066960' AND row->>'country' = 'FR';
 
 INSERT INTO instrument (uid, name, country, currency) VALUES ('FR-018066960', 'AF-PRIVATE-DEBT', 'IT', 'EUR');
-
 DELETE FROM instrument WHERE "country" = 'IT';
-
 INSERT INTO instrument (uid, name, country, currency, source) VALUES ('FR-018066960', 'af-private-debt', 'FR', 'EUR', 'bloomberg');
 
 -- SELECT * FROM history WHERE "date" < '2021-01-01';

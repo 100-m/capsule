@@ -1,14 +1,14 @@
-version: "3.1"
+version: '3.1'
 services:
   postgres:
     image: supabase/postgres
     command: postgres -c config_file=/etc/postgresql/postgresql.conf -c shared_preload_libraries='pg_net'
     restart: unless-stopped
     volumes:
-    - ./volumes/db/data:/var/lib/postgresql/data
-    - ./volumes/db/init:/docker-entrypoint-initdb.d
+      - ./volumes/db/data:/var/lib/postgresql/data
+      - ./volumes/db/init:/docker-entrypoint-initdb.d
     # ports:
-    # - "5432:5432"
+    #   - '5432:5432'
     environment:
       POSTGRES_PASSWORD: pgpwd
   hasura:
@@ -16,8 +16,8 @@ services:
       - postgres
     image: hasura/graphql-engine
     ports:
-    - "6000:8080"
+      - '6000:8080'
     environment:
-      HASURA_GRAPHQL_DATABASE_URL: "postgres://postgres:pgpwd@postgres:5432/postgres"
-      HASURA_GRAPHQL_ENABLE_CONSOLE: "true"
-      HASURA_GRAPHQL_DEV_MODE: "true"
+      HASURA_GRAPHQL_DATABASE_URL: 'postgres://postgres:pgpwd@postgres:5432/postgres'
+      HASURA_GRAPHQL_ENABLE_CONSOLE: 'true'
+      HASURA_GRAPHQL_DEV_MODE: 'true'

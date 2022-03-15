@@ -8,25 +8,27 @@
 export const NOTICE = 'NOTICE'
 export const plv8 = {
   execute: sql => {
-    return {
-      [`SELECT object FROM business_object;`]: ['bond', 'equity', 'instrument', 'preferred'].map(v => ({ object: v })),
-      [`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name IN ('instrument');`]: [
-        'id',
-        'uid',
-        'name',
-        'country',
-        'currency',
-      ].map(v => ({ column_name: v })),
-      [`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name IN ('equity');`]: [
-        'id',
-        'uid',
-        'name',
-        'country',
-        'currency',
-        'issuer',
-        'share_number',
-      ].map(v => ({ column_name: v })),
-    }[sql] || []
+    return (
+      {
+        [`SELECT object FROM business_object;`]: ['bond', 'equity', 'instrument', 'preferred'].map(v => ({ object: v })),
+        [`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name IN ('instrument');`]: [
+          'id',
+          'uid',
+          'name',
+          'country',
+          'currency',
+        ].map(v => ({ column_name: v })),
+        [`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name IN ('equity');`]: [
+          'id',
+          'uid',
+          'name',
+          'country',
+          'currency',
+          'issuer',
+          'share_number',
+        ].map(v => ({ column_name: v })),
+      }[sql] || []
+    )
   },
   elog: console.log,
 }
