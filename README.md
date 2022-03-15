@@ -105,6 +105,7 @@ Scenario:
 Links:
 
 - https://supabase.com/blog/2022/03/08/audit
+- https://github.com/hasura/audit-trigger / https://wiki.postgresql.org/wiki/Audit_trigger_91plus
 - https://wiki.postgresql.org/wiki/SQL2011Temporal
 - https://www.juxt.pro/blog/value-of-bitemporality
 - https://github.com/scalegenius/pg_bitemporal

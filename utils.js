@@ -144,6 +144,8 @@ CREATE TABLE "${object}" (
 )${str_inherits};
 ${str_comments}
 
+CREATE TRIGGER permission BEFORE INSERT OR UPDATE OR DELETE ON "${object}"
+FOR EACH ROW EXECUTE FUNCTION permission();
 CREATE TRIGGER history BEFORE INSERT OR UPDATE OR DELETE ON "${object}"
 FOR EACH ROW EXECUTE FUNCTION history();
 

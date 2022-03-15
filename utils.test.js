@@ -63,6 +63,8 @@ CREATE TABLE "instrument" (
 COMMENT ON TABLE "instrument" IS 'This is the instrument table';
 COMMENT ON COLUMN "instrument"."uid" IS 'This is the instrument identifier used internally by NeoXam or his client';
 
+CREATE TRIGGER permission BEFORE INSERT OR UPDATE OR DELETE ON "instrument"
+FOR EACH ROW EXECUTE FUNCTION permission();
 CREATE TRIGGER history BEFORE INSERT OR UPDATE OR DELETE ON "instrument"
 FOR EACH ROW EXECUTE FUNCTION history();
 
@@ -86,6 +88,8 @@ CREATE TABLE "equity" (
 ) INHERITS ("instrument");
 
 
+CREATE TRIGGER permission BEFORE INSERT OR UPDATE OR DELETE ON "equity"
+FOR EACH ROW EXECUTE FUNCTION permission();
 CREATE TRIGGER history BEFORE INSERT OR UPDATE OR DELETE ON "equity"
 FOR EACH ROW EXECUTE FUNCTION history();
 
@@ -108,6 +112,8 @@ CREATE TABLE "preferred" (
 ) INHERITS ("equity");
 
 
+CREATE TRIGGER permission BEFORE INSERT OR UPDATE OR DELETE ON "preferred"
+FOR EACH ROW EXECUTE FUNCTION permission();
 CREATE TRIGGER history BEFORE INSERT OR UPDATE OR DELETE ON "preferred"
 FOR EACH ROW EXECUTE FUNCTION history();
 
@@ -130,6 +136,8 @@ CREATE TABLE "bond" (
 ) INHERITS ("instrument");
 
 
+CREATE TRIGGER permission BEFORE INSERT OR UPDATE OR DELETE ON "bond"
+FOR EACH ROW EXECUTE FUNCTION permission();
 CREATE TRIGGER history BEFORE INSERT OR UPDATE OR DELETE ON "bond"
 FOR EACH ROW EXECUTE FUNCTION history();
 
@@ -156,6 +164,8 @@ CREATE TABLE "coupon" (
 );
 
 
+CREATE TRIGGER permission BEFORE INSERT OR UPDATE OR DELETE ON "coupon"
+FOR EACH ROW EXECUTE FUNCTION permission();
 CREATE TRIGGER history BEFORE INSERT OR UPDATE OR DELETE ON "coupon"
 FOR EACH ROW EXECUTE FUNCTION history();
 
@@ -315,38 +325,10 @@ export default scenarios
 
 //! PRE TEST
 await execute_hasura_sql(`
+DROP SCHEMA IF EXISTS public CASCADE;
+CREATE SCHEMA public;
 CREATE EXTENSION IF NOT EXISTS plv8;
 CREATE EXTENSION IF NOT EXISTS pg_net;
-DROP TRIGGER IF EXISTS business_object ON business_object;
-DROP FUNCTION IF EXISTS business_object;
-DROP TABLE IF EXISTS business_object;
-DROP TRIGGER IF EXISTS business_rule ON business_rule;
-DROP FUNCTION IF EXISTS business_rule;
-DROP TABLE IF EXISTS business_rule;
-DROP FUNCTION IF EXISTS "propose";
-DROP FUNCTION IF EXISTS "approve";
-DROP FUNCTION IF EXISTS "reject";
-DROP FUNCTION IF EXISTS "candidates";
-DROP FUNCTION IF EXISTS "golden";
-DROP TABLE IF EXISTS "coupon";
-DROP TABLE IF EXISTS "bond";
-DROP TABLE IF EXISTS "preferred";
-DROP TABLE IF EXISTS "equity";
-DROP TABLE IF EXISTS "instrument";
-DROP TABLE IF EXISTS "addin";
-DROP TABLE IF EXISTS "user";
-DROP TRIGGER IF EXISTS history ON "coupon";
-DROP TRIGGER IF EXISTS history ON "bond";
-DROP TRIGGER IF EXISTS history ON "preferred";
-DROP TRIGGER IF EXISTS history ON "equity";
-DROP TRIGGER IF EXISTS history ON "instrument";
-DROP TRIGGER IF EXISTS history ON "addin";
-DROP TRIGGER IF EXISTS history ON "user";
-DROP FUNCTION IF EXISTS history;
-DROP TABLE IF EXISTS history;
-DROP TYPE IF EXISTS "source";
-DROP TYPE IF EXISTS "resolution";
-DROP TYPE IF EXISTS "role";
 CREATE TYPE "source" AS ENUM ('manual', 'bloomberg', 'reuters');
 CREATE TYPE "resolution" AS ENUM ('rejected', 'approved');
 CREATE TYPE "role" AS ENUM ('user', 'steward', 'admin', 'robot');
@@ -364,7 +346,6 @@ CREATE TABLE "history" (
 );
 CREATE FUNCTION history() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER AS $trigger$BEGIN
-
 IF (TG_OP = 'INSERT') THEN
   INSERT INTO history ("table", "operation", "row") VALUES (TG_RELNAME, 'INSERT', row_to_json(NEW));
   RETURN NEW;
@@ -381,7 +362,27 @@ IF (TG_OP = 'DELETE') THEN
   INSERT INTO history ("table", "operation", "row") VALUES (TG_RELNAME, 'DELETE', row_to_json(OLD));
   RETURN OLD;
 END IF;
-
+END$trigger$;
+CREATE FUNCTION permission() RETURNS trigger
+LANGUAGE plpgsql AS $trigger$BEGIN
+IF (TG_OP = 'INSERT') THEN
+  IF ((current_setting('hasura.user')::jsonb)->>'x-hasura-role' != 'admin') THEN
+    RAISE '%', 'Only an admin can insert';
+  END IF;
+  RETURN NEW;
+END IF;
+IF (TG_OP = 'UPDATE') THEN
+  IF ((current_setting('hasura.user')::jsonb)->>'x-hasura-role' != 'admin') THEN
+    RAISE '%', 'Only an admin can update';
+  END IF;
+  RETURN NEW;
+END IF;
+IF (TG_OP = 'DELETE') THEN
+  IF ((current_setting('hasura.user')::jsonb)->>'x-hasura-role' != 'admin') THEN
+    RAISE '%', 'Only an admin can delete';
+  END IF;
+  RETURN OLD;
+END IF;
 END$trigger$;
 `)
 //! POST TEST
