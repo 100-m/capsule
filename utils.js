@@ -188,7 +188,7 @@ export const business_rule_insert_sql = ({ rule, language = 'sql', type = 'mutat
     .map(([k, v]) => `${k} ${PG_TYPES[v]}`)
     .join(', ')
   const str_lang = {
-    js: code,
+    js: `\n${code}\n`,
     sql: `BEGIN\n${code}\nEND`,
     // py: code,
   }

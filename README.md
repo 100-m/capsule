@@ -40,29 +40,29 @@ Usage:
 # 1. Authorisation
 Cette section concerne les fonctionnalités de User Management, Authentification et Authorisation.
 
-Le système d'Authentification est un système externe à la DB.
-Le système d'Authentification permet la gestion des utilisateurs. Creation/Suppression/Invitation/Monitoring
-Le système d'Authentification génère un token contenant le user/role. JWT
-Le système d'Authentification peut gérer des connections externe. SSO/Social
-Le système d'Authentification peut gérer des fonctionnalité avancée. MFA/magic-link
-Le système d'Authentification peut être un SAAS (Auth0, Okta) ou ON-PREMISE (gotrue, keycloak).
-TODO: Faire un script simple de création de user/token.
-TODO: Faire un setup de service ON-PREMISE
+Le système d'Authentification est un système externe à la DB.  
+Le système d'Authentification permet la gestion des utilisateurs. Creation/Suppression/Invitation/Monitoring  
+Le système d'Authentification génère un token contenant le user/role. JWT  
+Le système d'Authentification peut gérer des connections externe. SSO/Social  
+Le système d'Authentification peut gérer des fonctionnalité avancée. MFA/magic-link  
+Le système d'Authentification peut être un SAAS (Auth0, Okta) ou ON-PREMISE (gotrue, keycloak).  
+TODO: Faire un script simple de création de user/token.  
+TODO: Faire un setup de service ON-PREMISE  
 
-Un user à un seul role. par DEFAULT "user".
-Un user non-authentifié à le role "anon".
-Les roles définissent un ensemble de permissions de lecture/écriture que l'utilisateur doit respecter.
-Les permissions peuvent être ajouter/surchargée par user.
+Un user à un seul role. par DEFAULT "user".  
+Un user non-authentifié à le role "anon".  
+Les roles définissent un ensemble de permissions de lecture/écriture que l'utilisateur doit respecter.  
+Les permissions peuvent être ajouter/surchargée par user.  
 
-Les permissions de lecture correspondent à "SELECT".
-Les permissions d'écriture correspondent à "INSERT", "UPDATE", "DELETE".
+Les permissions de lecture correspondent à "SELECT".  
+Les permissions d'écriture correspondent à "INSERT", "UPDATE", "DELETE".  
 
-Les permissions de lecture limite l'accès au niveau de la ligne. (Limitation supabase et pas hasura ?)
-Les permissions d'écriture limite l'accès au niveau de la colonne ou de la fonctionnalité via une fonction custom de CHECK.
+Les permissions de lecture limite l'accès au niveau de la ligne. (Limitation supabase et pas hasura ?)  
+Les permissions d'écriture limite l'accès au niveau de la colonne ou de la fonctionnalité via une fonction custom de CHECK.  
 
-Les permission d'écriture peuvent être gérer dans un trigger postgres.
-Dans hasura, les permissions sont gérer au niveau graphql.
-Dans supabase, les permissions sont gérer via les "row level security" de postgres.
+Les permission d'écriture peuvent être gérer dans un trigger postgres.  
+Dans hasura, les permissions sont gérer au niveau graphql.  
+Dans supabase, les permissions sont gérer via les "row level security" de postgres.  
 
 Scenario:
 - Le superadmin créer le role data "steward" avec la règle: "can update resolution when creator is not me"

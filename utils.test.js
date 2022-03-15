@@ -1,6 +1,38 @@
 import * as utils from './utils.js'
 const { execute_hasura_sql, business_object_insert_sql, business_rule_insert_sql, trigger_table_insert_sql } = utils
 
+// // prettier-ignore
+// const PLV8_UTILS = (() => {
+// const log = str => plv8.elog(NOTICE, typeof str !== 'string' ? JSON.stringify(str) : str)
+// const execute = str => (log(str), plv8.execute(str))
+// const quote = v => typeof v === 'object' ? `'${JSON.stringify(v)}'` : typeof v === 'string' ? `'${v}'` : v
+// const select = (table, where) => execute(`SELECT * FROM ${table}${where ? ' WHERE ' + Object.entries(where).map(([k, v]) => `"${k}" = ${typeof v === 'object' ? `'${JSON.stringify(v)}'` : typeof v === 'string' ? `'${v}'` : v}`).join(' AND ') : ''};`)
+// const insert = (table, object) => execute(`INSERT INTO ${table} (${Object.keys(object).map(k => `"${k}"`)}.join(', ')) VALUES (${Object.values(object).map(quote).join(', ')});`)
+// const update = (table, object) => execute(`UPDATE ${table} SET ${Object.entries(object).map(([k, v]) => `"${k}" = ${quote(v)}`).join(',\n')} WHERE id = ${object.id};`)
+// const upsert = (table, object) => execute(`INSERT INTO ${table} (${Object.keys(object).map(k => `"${k}"`)}.join(', ')) VALUES (${Object.values(object).map(quote).join(', ')}) ON CONFLICT DO UPDATE SET ${Object.entries(object).map(([k, v]) => `"${k}" = ${quote(v)}`).join(',\n')};`)
+// const del = (table, object) => execute(`DELETE FROM ${table} WHERE id = ${object.id};`)
+// const instrument = select('instrument', { id: instrument_id })[0]
+// instrument.resolution = 'approved'
+// update('instrument', instrument)
+// return [instrument]
+// }).toString().slice(8, -1)
+
+// prettier-ignore
+const PLV8_UTILS = (() => {
+const log = str => plv8.elog(NOTICE, typeof str !== 'string' ? JSON.stringify(str) : str)
+const execute = str => (log(str), plv8.execute(str))
+const quote = v => typeof v === 'object' ? `'${JSON.stringify(v)}'` : typeof v === 'string' ? `'${v}'` : v
+const update = (table, changeset, where) => execute(`UPDATE ${table} SET ${Object.entries(changeset).map(([k, v]) => `"${k}" = ${quote(v)}`).join(',\n')}${where ? ' WHERE ' + Object.entries(where).map(([k, v]) => `"${k}" = ${typeof v === 'object' ? `'${JSON.stringify(v)}'` : typeof v === 'string' ? `'${v}'` : v}`).join(' AND ') : ''} RETURNING *;`)
+
+}).toString().slice(8, -1)
+
+const ADDITIONAL_COLUMNS = `
+  "source" "source" NOT NULL DEFAULT 'manual',
+  "resolution" "resolution",
+  "valid" TSTZRANGE NOT NULL DEFAULT TSTZRANGE(NOW(), NULL),
+  "last_update" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "last_change" INT,`
+
 const scenarios_modeling = [
   {
     name: 'Modeling - Business Object',
@@ -24,11 +56,12 @@ CREATE TABLE "instrument" (
   "uid" TEXT NOT NULL,
   "name" TEXT NOT NULL,
   "country" TEXT NOT NULL,
-  "currency" TEXT NOT NULL,
+  "currency" TEXT NOT NULL,${ADDITIONAL_COLUMNS}
   CONSTRAINT "UNIQUE_instrument" UNIQUE ("uid", "name", "country", "currency"),
   CONSTRAINT "PK_instrument" PRIMARY KEY ("id")
 );
 COMMENT ON TABLE "instrument" IS 'This is the instrument table';
+COMMENT ON COLUMN "instrument"."uid" IS 'This is the instrument identifier used internally by NeoXam or his client';
 
 CREATE TRIGGER history BEFORE INSERT OR UPDATE OR DELETE ON "instrument"
 FOR EACH ROW EXECUTE FUNCTION history();
@@ -47,10 +80,11 @@ SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg
         output: `
 CREATE TABLE "equity" (
   "issuer" TEXT NOT NULL,
-  "share_number" INTEGER NOT NULL,
+  "share_number" INTEGER NOT NULL,${ADDITIONAL_COLUMNS}
   CONSTRAINT "UNIQUE_equity" UNIQUE ("uid", "name", "country", "currency", "issuer", "share_number"),
   CONSTRAINT "PK_equity" PRIMARY KEY ("id")
 ) INHERITS ("instrument");
+
 
 CREATE TRIGGER history BEFORE INSERT OR UPDATE OR DELETE ON "equity"
 FOR EACH ROW EXECUTE FUNCTION history();
@@ -68,10 +102,11 @@ SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg
         ],
         output: `
 CREATE TABLE "preferred" (
-  "rate" REAL NOT NULL,
+  "rate" REAL NOT NULL,${ADDITIONAL_COLUMNS}
   CONSTRAINT "UNIQUE_preferred" UNIQUE ("uid", "name", "country", "currency", "issuer", "share_number", "rate"),
   CONSTRAINT "PK_preferred" PRIMARY KEY ("id")
 ) INHERITS ("equity");
+
 
 CREATE TRIGGER history BEFORE INSERT OR UPDATE OR DELETE ON "preferred"
 FOR EACH ROW EXECUTE FUNCTION history();
@@ -89,10 +124,11 @@ SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg
         ],
         output: `
 CREATE TABLE "bond" (
-  "maturity_date" TIMESTAMPTZ NOT NULL,
+  "maturity_date" TIMESTAMPTZ NOT NULL,${ADDITIONAL_COLUMNS}
   CONSTRAINT "UNIQUE_bond" UNIQUE ("uid", "name", "country", "currency", "maturity_date"),
   CONSTRAINT "PK_bond" PRIMARY KEY ("id")
 ) INHERITS ("instrument");
+
 
 CREATE TRIGGER history BEFORE INSERT OR UPDATE OR DELETE ON "bond"
 FOR EACH ROW EXECUTE FUNCTION history();
@@ -114,10 +150,11 @@ CREATE TABLE "coupon" (
   "bond_id" INTEGER NOT NULL REFERENCES "bond"("id"),
   "date" TIMESTAMPTZ NOT NULL,
   "currency" TEXT NOT NULL,
-  "coupon" REAL NOT NULL,
+  "coupon" REAL NOT NULL,${ADDITIONAL_COLUMNS}
   CONSTRAINT "UNIQUE_coupon" UNIQUE ("bond_id", "date", "currency", "coupon"),
   CONSTRAINT "PK_coupon" PRIMARY KEY ("id")
 );
+
 
 CREATE TRIGGER history BEFORE INSERT OR UPDATE OR DELETE ON "coupon"
 FOR EACH ROW EXECUTE FUNCTION history();
@@ -143,30 +180,8 @@ SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg
             },
             output: 'instrument',
             // code: `RETURN QUERY UPDATE "instrument" SET "resolution" = 'approved' WHERE id = instrument_id RETURNING *;`,
-            // prettier-ignore
-            code: (() => {
-
-//* UTILS plv8
-const log = str => plv8.elog(NOTICE, typeof str !== 'string' ? JSON.stringify(str) : str)
-const execute = str => (log(str), plv8.execute(str))
-const quote = v => typeof v === 'object' ? `'${JSON.stringify(v)}'` : typeof v === 'string' ? `'${v}'` : v
-//? JS PROPOSAL #2
-const update = (table, changeset, where) => execute(`UPDATE ${table} SET ${Object.entries(changeset).map(([k, v]) => `"${k}" = ${quote(v)}`).join(',\n')}${where ? ' WHERE ' + Object.entries(where).map(([k, v]) => `"${k}" = ${typeof v === 'object' ? `'${JSON.stringify(v)}'` : typeof v === 'string' ? `'${v}'` : v}`).join(' AND ') : ''} RETURNING *;`)
-return update('instrument', { resolution: 'approved' }, { id: instrument_id })
-//? JS PROPOSAL #1
-// const select = (table, where) => execute(`SELECT * FROM ${table}${where ? ' WHERE ' + Object.entries(where).map(([k, v]) => `"${k}" = ${typeof v === 'object' ? `'${JSON.stringify(v)}'` : typeof v === 'string' ? `'${v}'` : v}`).join(' AND ') : ''};`)
-// const insert = (table, object) => execute(`INSERT INTO ${table} (${Object.keys(object).map(k => `"${k}"`)}.join(', ')) VALUES (${Object.values(object).map(quote).join(', ')});`)
-// const update = (table, object) => execute(`UPDATE ${table} SET ${Object.entries(object).map(([k, v]) => `"${k}" = ${quote(v)}`).join(',\n')} WHERE id = ${object.id};`)
-// const upsert = (table, object) => execute(`INSERT INTO ${table} (${Object.keys(object).map(k => `"${k}"`)}.join(', ')) VALUES (${Object.values(object).map(quote).join(', ')}) ON CONFLICT DO UPDATE SET ${Object.entries(object).map(([k, v]) => `"${k}" = ${quote(v)}`).join(',\n')};`)
-// const del = (table, object) => execute(`DELETE FROM ${table} WHERE id = ${object.id};`)
-// const instrument = select('instrument', { id: instrument_id })[0]
-// instrument.resolution = 'approved'
-// update('instrument', instrument)
-// return [instrument]
-//! SQL EQUIVALENT
-// return execute(`UPDATE "instrument" SET "resolution" = 'approved' WHERE id = ${instrument_id} RETURNING *;`)
-
-}).toString().slice(8, -1),
+            // code: (() => { return plv8.execute(`UPDATE "instrument" SET "resolution" = 'approved' WHERE id = ${instrument_id} RETURNING *;`) }).toString().slice(8, -1),
+            code: PLV8_UTILS + `return update('instrument', { resolution: 'approved' }, { id: instrument_id })`,
             comments: {
               rule: 'This is the rule function',
               instrument_id: 'This is the instrument identifier used internally by NeoXam or his client',
@@ -177,15 +192,10 @@ return update('instrument', { resolution: 'approved' }, { id: instrument_id })
 CREATE FUNCTION
 approve(instrument_id INTEGER)
 RETURNS SETOF instrument
-LANGUAGE plpgsql VOLATILE
-AS $function$BEGIN
-
-RETURN QUERY
-UPDATE instrument SET resolution = 'approved'
-WHERE id = instrument_id
-RETURNING *;
-
-END$function$;
+LANGUAGE plv8 VOLATILE
+AS $function$
+${PLV8_UTILS}return update('instrument', { resolution: 'approved' }, { id: instrument_id })
+$function$;
 COMMENT ON FUNCTION approve(instrument_id integer) IS 'This is the rule function';
 
 SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg_track_function","args":{"function":{"name":"approve","schema":"public"},"configuration":{"exposed_as":"mutation"},"source":"default"}}');
@@ -210,12 +220,7 @@ reject(instrument_id INTEGER)
 RETURNS SETOF instrument
 LANGUAGE plpgsql VOLATILE
 AS $function$BEGIN
-
-RETURN QUERY
-UPDATE instrument SET resolution = 'rejected'
-WHERE id = instrument_id
-RETURNING *;
-
+RETURN QUERY UPDATE "instrument" SET "resolution" = 'rejected' WHERE id = instrument_id RETURNING *;
 END$function$;
 
 
@@ -229,9 +234,7 @@ SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg
             language: 'sql',
             type: 'query',
             output: 'instrument',
-            code: `RETURN QUERY
-SELECT * FROM instrument
-WHERE resolution IS NULL;`,
+            code: `RETURN QUERY SELECT * FROM instrument WHERE resolution IS NULL;`,
             comments: {},
           },
         ],
@@ -241,11 +244,7 @@ candidates()
 RETURNS SETOF instrument
 LANGUAGE plpgsql STABLE
 AS $function$BEGIN
-
-RETURN QUERY
-SELECT * FROM instrument
-WHERE resolution IS NULL;
-
+RETURN QUERY SELECT * FROM instrument WHERE resolution IS NULL;
 END$function$;
 
 
@@ -277,14 +276,12 @@ golden(instrument_id INTEGER)
 RETURNS SETOF instrument
 LANGUAGE plpgsql STABLE
 AS $function$BEGIN
-
 RETURN QUERY
 SELECT * FROM instrument
 WHERE instrument.resolution = 'approved'
 AND instrument.uid = golden.uid
 ORDER BY instrument.source DESC
 LIMIT 1;
-
 END$function$;
 
 
@@ -338,7 +335,7 @@ CREATE TYPE "resolution" AS ENUM ('rejected', 'approved');
 CREATE TYPE "role" AS ENUM ('user', 'steward', 'admin', 'robot');
 CREATE TABLE "user" (
   "id" SERIAL NOT NULL,
-  "role" "role" NOT NULL,
+  "role" "role" NOT NULL,${ADDITIONAL_COLUMNS}
   CONSTRAINT "PK_user" PRIMARY KEY ("id")
 );
 CREATE TABLE "history" (
