@@ -8,35 +8,28 @@
 export const NOTICE = 'NOTICE'
 export const plv8 = {
   execute: sql => {
-    // console.log(sql)
-    return (
-      {
-        [`SELECT object FROM business_object;`]: ['bond', 'equity', 'instrument', 'preferred'].map(v => ({ object: v })),
-        [`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name IN ('instrument');`]: [
-          'id',
-          'uid',
-          'name',
-          'country',
-          'currency',
-        ].map(v => ({ column_name: v })),
-        [`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name IN ('equity');`]: [
-          'id',
-          'uid',
-          'name',
-          'country',
-          'currency',
-          'issuer',
-          'share_number',
-        ].map(v => ({ column_name: v })),
-      }[sql] || []
-    )
+    return {
+      [`SELECT object FROM business_object;`]: ['bond', 'equity', 'instrument', 'preferred'].map(v => ({ object: v })),
+      [`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name IN ('instrument');`]: [
+        'id',
+        'uid',
+        'name',
+        'country',
+        'currency',
+      ].map(v => ({ column_name: v })),
+      [`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name IN ('equity');`]: [
+        'id',
+        'uid',
+        'name',
+        'country',
+        'currency',
+        'issuer',
+        'share_number',
+      ].map(v => ({ column_name: v })),
+    }[sql] || []
   },
   elog: console.log,
 }
-/**
- * @param {string} sql
- * @returns {Promise<Response>}
- */
 export const execute_hasura_sql = async sql => {
   const response = await fetch('https://capsule.dock.nx.digital/v2/query', {
     method: 'POST',
@@ -70,13 +63,18 @@ export const execute_hasura_sql = async sql => {
 }
 
 //! UTILS plv8
+/**
+ *
+ * @param {string} str
+ * @returns void
+ */
 export const log = str => plv8.elog(NOTICE, typeof str !== 'string' ? JSON.stringify(str) : str)
+/**
+ * https://plv8.github.io/#-code-plv8-execute-code-
+ * @param {string} str
+ * @returns {{}[] | number}
+ */
 export const execute = str => (log(str), plv8.execute(str))
-export const select = (table, id, where) => execute(`SELECT * FROM ${table} WHERE id = ${id}`)
-// export const insert = object => execute(`SELECT * FROM ${table} WHERE id = ${id}`)
-// export const update = object => execute(`SELECT * FROM ${table} WHERE id = ${id}`)
-// export const upsert = object => execute(`SELECT * FROM ${table} WHERE id = ${id}`)
-// export const del = object => execute(`DELETE FROM ${object} WHERE id = ${object.id}`)
 
 //! UTILS capsule
 export const business_object_insert_sql = ({ object, inherits = [], fields = {}, comments = {} }) => {
@@ -116,11 +114,8 @@ export const business_object_insert_sql = ({ object, inherits = [], fields = {},
     if (!type) throw new Error(`Unknown type ${v} for ${field}`)
     return `"${field}" ${type}${nullable}`
   }
-  const inherited_fields = inherits.length
-    ? execute(`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name IN (${inherits.map(k => `'${k}'`)});`).map(
-        v => v.column_name,
-      )
-    : []
+  // prettier-ignore
+  const inherited_fields = inherits.length ? execute(`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name IN (${inherits.map(k => `'${k}'`)});`).map(v => v.column_name) : []
   const id_field = inherited_fields.find(v => v === 'id') ? {} : { id: 'serial' }
   const str_columns = Object.entries({ ...id_field, ...fields })
     .map(column_type)
@@ -137,6 +132,11 @@ export const business_object_insert_sql = ({ object, inherits = [], fields = {},
   return `
 CREATE TABLE "${object}" (
   ${str_columns},
+  "source" "source" NOT NULL DEFAULT 'manual',
+  "resolution" "resolution",
+  "valid" TSTZRANGE NOT NULL DEFAULT TSTZRANGE(NOW(), NULL),
+  "last_update" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "last_change" INT,
   CONSTRAINT "UNIQUE_${object}" UNIQUE (${str_unique}),
   CONSTRAINT "PK_${object}" PRIMARY KEY ("id")
 )${str_inherits};
@@ -156,7 +156,7 @@ DROP TABLE "${object}";
 SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg_untrack_table","args":{"table":{"name":"${object}","schema":"public"}}}');
 `
 }
-export const business_rule_insert_sql = ({ rule, language = 'sql', type = 'mutation', input = {}, output = 'null', code, comments = {} }) => {
+export const business_rule_insert_sql = ({ rule, language = 'sql', type = 'mutation', input = {}, output = 'null', code, comments = { rule: '' } }) => {
   if (!rule) throw new Error(`No rule specified`)
   if (!code) throw new Error(`No code specified`)
   const PG_TYPES = {
@@ -180,23 +180,24 @@ export const business_rule_insert_sql = ({ rule, language = 'sql', type = 'mutat
   const PG_LANGUAGES = {
     sql: 'plpgsql',
     js: 'plv8',
-    javascript: 'plv8',
-    py: 'plpython',
-    python: 'plpython',
+    // py: 'plpythonu',
   }
+  language = language.replace('javascript', 'js').replace('python', 'py')
+  if (!PG_LANGUAGES[language]) throw new Error(`Language ${language} not supported`)
   const str_input = Object.entries(input)
     .map(([k, v]) => `${k} ${PG_TYPES[v]}`)
     .join(', ')
+  const str_lang = {
+    js: code,
+    sql: `BEGIN\n${code}\nEND`,
+    // py: code,
+  }
   return `
 CREATE FUNCTION
 ${rule}(${str_input})
 RETURNS ${PG_TYPES[output] || `SETOF ${output}`}
 LANGUAGE ${PG_LANGUAGES[language]} ${type === 'mutation' ? 'VOLATILE' : 'STABLE'}
-AS $function$BEGIN
-
-${code}
-
-END$function$;
+AS $function$${str_lang[language]}$function$;
 ${comments.rule ? `COMMENT ON FUNCTION ${rule}(instrument_id integer) IS '${comments.rule || ''}';` : ''}
 
 SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg_track_function","args":{"function":{"name":"${rule}","schema":"public"},"configuration":{"exposed_as":"${type}"},"source":"default"}}');
@@ -216,10 +217,7 @@ CREATE FUNCTION business_object()
 RETURNS TRIGGER
 LANGUAGE plv8 AS $trigger$
 
-const log = ${log.toString()}
-const execute = ${execute.toString()}
-const business_object_delete_sql = ${business_object_delete_sql.toString()}
-const business_object_insert_sql = ${business_object_insert_sql.toString()}
+${[log, execute, business_object_insert_sql, business_object_delete_sql].map(fn => `const ${fn.name} = ${fn.toString()}`).join('\n')}
 
 if (TG_OP === 'INSERT') {
   execute(business_object_insert_sql(NEW))
@@ -251,10 +249,7 @@ CREATE FUNCTION business_rule()
 RETURNS TRIGGER
 LANGUAGE plv8 AS $trigger$
 
-const log = ${log.toString()}
-const execute = ${execute.toString()}
-const business_rule_delete_sql = ${business_rule_delete_sql.toString()}
-const business_rule_insert_sql = ${business_rule_insert_sql.toString()}
+${[log, execute, business_rule_insert_sql, business_rule_delete_sql].map(fn => `const ${fn.name} = ${fn.toString()}`).join('\n')}
 
 if (TG_OP === 'INSERT') {
   execute(business_rule_insert_sql(NEW))

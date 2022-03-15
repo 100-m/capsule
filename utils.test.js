@@ -1,14 +1,5 @@
 import * as utils from './utils.js'
-const {
-  execute_hasura_sql,
-  execute,
-  log,
-  business_object_insert_sql,
-  business_object_delete_sql,
-  business_rule_insert_sql,
-  business_rule_delete_sql,
-  trigger_table_insert_sql,
-} = utils
+const { execute_hasura_sql, business_object_insert_sql, business_rule_insert_sql, trigger_table_insert_sql } = utils
 
 const scenarios_modeling = [
   {
@@ -19,7 +10,7 @@ const scenarios_modeling = [
         input: [
           {
             object: 'instrument',
-            inherits: ['addin'],
+            inherits: [],
             fields: { uid: 'string', name: 'string', country: 'string', currency: 'string' },
             comments: {
               object: 'This is the instrument table',
@@ -36,7 +27,7 @@ CREATE TABLE "instrument" (
   "currency" TEXT NOT NULL,
   CONSTRAINT "UNIQUE_instrument" UNIQUE ("uid", "name", "country", "currency"),
   CONSTRAINT "PK_instrument" PRIMARY KEY ("id")
-) INHERITS ("addin");
+);
 COMMENT ON TABLE "instrument" IS 'This is the instrument table';
 
 CREATE TRIGGER history BEFORE INSERT OR UPDATE OR DELETE ON "instrument"
@@ -145,16 +136,37 @@ SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg
         input: [
           {
             rule: 'approve',
-            language: 'sql',
+            language: 'js',
             type: 'mutation',
             input: {
               instrument_id: 'integer',
             },
             output: 'instrument',
-            code: `RETURN QUERY
-UPDATE instrument SET resolution = 'approved'
-WHERE id = instrument_id
-RETURNING *;`,
+            // code: `RETURN QUERY UPDATE "instrument" SET "resolution" = 'approved' WHERE id = instrument_id RETURNING *;`,
+            // prettier-ignore
+            code: (() => {
+
+//* UTILS plv8
+const log = str => plv8.elog(NOTICE, typeof str !== 'string' ? JSON.stringify(str) : str)
+const execute = str => (log(str), plv8.execute(str))
+const quote = v => typeof v === 'object' ? `'${JSON.stringify(v)}'` : typeof v === 'string' ? `'${v}'` : v
+//? JS PROPOSAL #2
+const update = (table, changeset, where) => execute(`UPDATE ${table} SET ${Object.entries(changeset).map(([k, v]) => `"${k}" = ${quote(v)}`).join(',\n')}${where ? ' WHERE ' + Object.entries(where).map(([k, v]) => `"${k}" = ${typeof v === 'object' ? `'${JSON.stringify(v)}'` : typeof v === 'string' ? `'${v}'` : v}`).join(' AND ') : ''} RETURNING *;`)
+return update('instrument', { resolution: 'approved' }, { id: instrument_id })
+//? JS PROPOSAL #1
+// const select = (table, where) => execute(`SELECT * FROM ${table}${where ? ' WHERE ' + Object.entries(where).map(([k, v]) => `"${k}" = ${typeof v === 'object' ? `'${JSON.stringify(v)}'` : typeof v === 'string' ? `'${v}'` : v}`).join(' AND ') : ''};`)
+// const insert = (table, object) => execute(`INSERT INTO ${table} (${Object.keys(object).map(k => `"${k}"`)}.join(', ')) VALUES (${Object.values(object).map(quote).join(', ')});`)
+// const update = (table, object) => execute(`UPDATE ${table} SET ${Object.entries(object).map(([k, v]) => `"${k}" = ${quote(v)}`).join(',\n')} WHERE id = ${object.id};`)
+// const upsert = (table, object) => execute(`INSERT INTO ${table} (${Object.keys(object).map(k => `"${k}"`)}.join(', ')) VALUES (${Object.values(object).map(quote).join(', ')}) ON CONFLICT DO UPDATE SET ${Object.entries(object).map(([k, v]) => `"${k}" = ${quote(v)}`).join(',\n')};`)
+// const del = (table, object) => execute(`DELETE FROM ${table} WHERE id = ${object.id};`)
+// const instrument = select('instrument', { id: instrument_id })[0]
+// instrument.resolution = 'approved'
+// update('instrument', instrument)
+// return [instrument]
+//! SQL EQUIVALENT
+// return execute(`UPDATE "instrument" SET "resolution" = 'approved' WHERE id = ${instrument_id} RETURNING *;`)
+
+}).toString().slice(8, -1),
             comments: {
               rule: 'This is the rule function',
               instrument_id: 'This is the instrument identifier used internally by NeoXam or his client',
@@ -188,10 +200,7 @@ SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg
               instrument_id: 'integer',
             },
             output: 'instrument',
-            code: `RETURN QUERY
-UPDATE instrument SET resolution = 'rejected'
-WHERE id = instrument_id
-RETURNING *;`,
+            code: `RETURN QUERY UPDATE "instrument" SET "resolution" = 'rejected' WHERE id = instrument_id RETURNING *;`,
             comments: {},
           },
         ],
@@ -282,145 +291,18 @@ END$function$;
 SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg_track_function","args":{"function":{"name":"golden","schema":"public"},"configuration":{"exposed_as":"query"},"source":"default"}}');
 `,
       },
-//       {
-//         input: [
-//           {
-//             rule: 'reject',
-//             input: {
-//               instrument_id: 'integer',
-//             },
-//             language: 'js',
-//             code: `const instrument = select('instrument', instrument_id)
-// instrument.resolution = 'rejected'
-// instrument.resolution_date = new Date() || CURRENT_TIMESTAMP
-// instrument.resolution_user = CURRENT_USER
-// update('instrument', instrument)`,
-//             comments: {
-//               rule: 'This is the rule function',
-//               instrument_id: 'This is the instrument identifier used internally by NeoXam or his client',
-//             },
-//           },
-//         ],
-//         output: `
-// CREATE FUNCTION
-// reject(instrument_id INTEGER)
-// RETURNS VOID
-// LANGUAGE plv8
-// AS $function$BEGIN
-
-// ${['log', 'execute', 'business_object_delete_sql', 'business_object_insert_sql'].map(v => `const ${v} = ${utils[v].toString()}`).join('\n')}
-// const instrument = select('instrument', instrument_id)
-// instrument.resolution = 'rejected'
-// instrument.resolution_date = new Date() || CURRENT_TIMESTAMP
-// instrument.resolution_user = CURRENT_USER
-// update('instrument', instrument)
-
-// END$function$;
-// COMMENT ON FUNCTION reject(instrument_id integer) IS 'This is the rule function';
-
-// SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg_track_function","args":{"function":{"name":"reject","schema":"public"},"configuration":{"exposed_as":"mutation"},"source":"default"}}');
-// `,
-//       },
     ],
     business_rule_insert_sql,
   },
 ]
-const scenarios_trigger = [
-  {
-    name: 'Modeling - Trigger Table',
-    tests: [
-      {
-        input: ['business_object'],
-        output: `
-CREATE FUNCTION business_object()
-RETURNS TRIGGER
-LANGUAGE plv8 AS $trigger$
 
-${['log', 'execute', 'business_object_delete_sql', 'business_object_insert_sql'].map(v => `const ${v} = ${utils[v].toString()}`).join('\n')}
-
-if (TG_OP === 'INSERT') {
-  execute(business_object_insert_sql(NEW))
-}
-if (TG_OP === 'UPDATE') {
-  execute(business_object_delete_sql(OLD))
-  execute(business_object_insert_sql(NEW))
-}
-if (TG_OP === 'DELETE') {
-  execute(business_object_delete_sql(OLD))
-}
-return NEW
-
-$trigger$;
-CREATE TABLE "business_object" (
-  "object" TEXT NOT NULL,
-  "inherits" JSONB NOT NULL,
-  "fields" JSONB NOT NULL,
-  "comments" JSONB NOT NULL,
-  CONSTRAINT "PK_business_object" PRIMARY KEY ("object")
-);
-CREATE TRIGGER business_object BEFORE INSERT OR UPDATE OR DELETE ON business_object
-FOR EACH ROW EXECUTE FUNCTION business_object();
-
-SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg_track_table","args":{"table":{"name":"business_object","schema":"public"}}}');
-`,
-      },
-      {
-        input: ['business_rule'],
-        output: `
-CREATE FUNCTION business_rule()
-RETURNS TRIGGER
-LANGUAGE plv8 AS $trigger$
-
-${['log', 'execute', 'business_rule_delete_sql', 'business_rule_insert_sql'].map(v => `const ${v} = ${utils[v].toString()}`).join('\n')}
-
-if (TG_OP === 'INSERT') {
-  execute(business_rule_insert_sql(NEW))
-}
-if (TG_OP === 'UPDATE') {
-  execute(business_rule_delete_sql(OLD))
-  execute(business_rule_insert_sql(NEW))
-}
-if (TG_OP === 'DELETE') {
-  execute(business_rule_delete_sql(OLD))
-}
-return NEW
-
-$trigger$;
-CREATE TABLE "business_rule" (
-  "rule" TEXT NOT NULL,
-  "language" TEXT NOT NULL,
-  "type" TEXT NOT NULL,
-  "input" JSONB NOT NULL,
-  "output" TEXT NOT NULL,
-  "code" TEXT NOT NULL,
-  "comments" JSONB NOT NULL,
-  CONSTRAINT "PK_business_rule" PRIMARY KEY ("rule")
-);
-CREATE TRIGGER business_rule BEFORE INSERT OR UPDATE OR DELETE ON business_rule
-FOR EACH ROW EXECUTE FUNCTION business_rule();
-
-SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg_track_table","args":{"table":{"name":"business_rule","schema":"public"}}}');
-`,
-      },
-    ],
-    trigger_table_insert_sql,
-  },
-]
-const schema = [
-  {
-    name: 'Schema - Multi Source',
-    tests: [{ input: [], output: undefined }],
-    fn: () => {
-      // insert 2 instruments with different source
-    },
-  },
-]
-
-const scenarios = scenarios_trigger
+const scenarios = scenarios_modeling
 
 console.clear()
 //! PRE TEST
 await execute_hasura_sql(`
+CREATE EXTENSION IF NOT EXISTS plv8;
+CREATE EXTENSION IF NOT EXISTS pg_net;
 DROP TRIGGER IF EXISTS business_object ON business_object;
 DROP FUNCTION IF EXISTS business_object;
 DROP TABLE IF EXISTS business_object;
@@ -459,27 +341,31 @@ CREATE TABLE "user" (
   "role" "role" NOT NULL,
   CONSTRAINT "PK_user" PRIMARY KEY ("id")
 );
-CREATE TABLE "addin" (
-  "source" "source" NOT NULL DEFAULT 'manual',
-  "resolution" "resolution"
-);
 CREATE TABLE "history" (
   "id" SERIAL NOT NULL,
   "table" TEXT NOT NULL,
-  "row_id" INT NOT NULL,
+  "operation" TEXT NOT NULL,
   "row" JSONB,
-  "date" TIMESTAMPTZ NOT NULL DEFAULT CLOCK_TIMESTAMP(),
   CONSTRAINT "PK_history" PRIMARY KEY ("id")
 );
 CREATE FUNCTION history() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER AS $trigger$BEGIN
 
-IF (TG_OP = 'DELETE') THEN
-  INSERT INTO history ("table", "row_id", "row") VALUES (TG_RELNAME, OLD.id, row_to_json(NEW));
-  RETURN OLD;
-ELSE
-  INSERT INTO history ("table", "row_id", "row") VALUES (TG_RELNAME, NEW.id, row_to_json(NEW));
+IF (TG_OP = 'INSERT') THEN
+  INSERT INTO history ("table", "operation", "row") VALUES (TG_RELNAME, 'INSERT', row_to_json(NEW));
   RETURN NEW;
+END IF;
+IF (TG_OP = 'UPDATE') THEN
+  IF (OLD != NEW) THEN
+    -- OLD.history = NULL;
+    INSERT INTO history ("table", "operation", "row") VALUES (TG_RELNAME, 'UPDATE', row_to_json(NEW)) RETURNING id INTO NEW.last_change;
+    -- NEW.history = row_to_json(OLD)::jsonb;
+  END IF;
+  RETURN NEW;
+END IF;
+IF (TG_OP = 'DELETE') THEN
+  INSERT INTO history ("table", "operation", "row") VALUES (TG_RELNAME, 'DELETE', row_to_json(OLD));
+  RETURN OLD;
 END IF;
 
 END$trigger$;
@@ -543,28 +429,30 @@ INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (8, '2026-01-01', 'U
 INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (8, '2027-01-01', 'USD', 0.023);
 INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (9, '2022-01-01', 'USD', 0.07);
 INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (9, '2023-01-01', 'USD', 0.07);
-
+`)
+await execute_hasura_sql(`
 SELECT reject(id) FROM candidates() WHERE "uid" = 'FR-018066960' AND "country" = 'FR';
-SELECT approve(id) FROM candidates() WHERE "uid" = 'FR-018066960' AND "country" = 'FR';
-SELECT approve(id) FROM candidates() WHERE "uid" = 'FR-018066960' AND "country" = 'FR'; -- SAME QUERY AS ABOVE, SHOULD NOT APPEAR IN history TABLE
-UPDATE instrument SET "resolution" = 'approved' WHERE "uid" = 'FR-018066960' AND "country" = 'FR'; -- SAME QUERY AS ABOVE, SHOULD NOT APPEAR IN history TABLE
-UPDATE instrument SET "resolution" = 'approved' WHERE "uid" = 'FR-018066960' AND "country" = 'FR'; -- SAME QUERY AS ABOVE, SHOULD NOT APPEAR IN history TABLE
+SELECT approve(id) FROM instrument WHERE "uid" = 'FR-018066960' AND "country" = 'FR';
+SELECT approve(id) FROM instrument WHERE "uid" = 'FR-018066960' AND "country" = 'FR'; -- SAME QUERY AS ABOVE, WILL NOT APPEAR IN history TABLE
+UPDATE instrument SET "resolution" = 'approved' WHERE "uid" = 'FR-018066960' AND "country" = 'FR'; -- SAME QUERY AS ABOVE, WILL NOT APPEAR IN history TABLE
+UPDATE instrument SET "resolution" = 'approved' WHERE "uid" = 'FR-018066960' AND "country" = 'FR'; -- SAME QUERY AS ABOVE, WILL NOT APPEAR IN history TABLE
 
 INSERT INTO instrument (uid, name, country, currency) VALUES ('FR-018066960', 'AF-PRIVATE-DEBT', 'US', 'USD');
 SELECT reject(id) FROM candidates() WHERE "uid" = 'FR-018066960' AND "country" = 'US';
-UPDATE history SET "date" = '2020-01-01' WHERE id IN(SELECT max(id) FROM history); -- force date for last history entry
-
-
-SELECT * FROM history WHERE "date" < '2021-01-01';
-SELECT * FROM history WHERE row->>'uid' = 'FR-018066960'; -- THIS WORKS
-SELECT * FROM history WHERE row['uid']::text = 'FR-018066960'; -- THIS DOESN'T WORKS
--- UPDATE history SET "date" = '2020-01-01' WHERE "table" = 'instrument' AND row->>'uid' = 'FR-018066960' AND row->>'country' = 'FR'; -- THIS DOESN'T WORKS BECAUSE OF DUPLICATE ROWS
+-- UPDATE history SET "date" = '2020-01-01' WHERE id IN(SELECT max(id) FROM history); -- force date for last history entry
+-- UPDATE history SET "date" = '2020-01-01' WHERE "table" = 'instrument' AND row->>'uid' = 'FR-018066960' AND row->>'country' = 'FR';
 
 INSERT INTO instrument (uid, name, country, currency) VALUES ('FR-018066960', 'AF-PRIVATE-DEBT', 'IT', 'EUR');
 
+DELETE FROM instrument WHERE "country" = 'IT';
+
+INSERT INTO instrument (uid, name, country, currency, source) VALUES ('FR-018066960', 'af-private-debt', 'FR', 'EUR', 'bloomberg');
+
+-- SELECT * FROM history WHERE "date" < '2021-01-01';
+-- SELECT * FROM history WHERE row->>'uid' = 'FR-018066960'; -- THIS WORKS
+-- SELECT * FROM history WHERE row['uid']::text = 'FR-018066960'; -- THIS DOESN'T WORKS
 -- SELECT id FROM candidates();
 -- SELECT row['resolution'] FROM history WHERE "table" = 'instrument' AND "row_id" = 1 AND date < '2022-03-10' ORDER BY date DESC LIMIT 2;
-
 `)
 
 // TODO:
