@@ -20,4 +20,6 @@ services:
     environment:
       HASURA_GRAPHQL_DATABASE_URL: 'postgres://postgres:pgpwd@postgres:5432/postgres'
       HASURA_GRAPHQL_ENABLE_CONSOLE: 'true'
-      HASURA_GRAPHQL_DEV_MODE: 'true'
+      HASURA_GRAPHQL_ADMIN_SECRET: 'fMIhN8q92lOQWVGH'
+      HASURA_GRAPHQL_JWT_SECRET: '{"type":"HS256","key":"fMIhN8q92lOQWVGHI8WMRlnpdvTbUNljOzjWUgCCVlA="}'
+      HASURA_GRAPHQL_UNAUTHORIZED_ROLE: 'anon'

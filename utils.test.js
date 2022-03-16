@@ -1,21 +1,13 @@
 import * as utils from './utils.js'
-const { execute_hasura_sql, business_object_insert_sql, business_rule_insert_sql, trigger_table_insert_sql } = utils
+const { execute_sql, business_object_insert, business_rule_insert, business_object_trigger, business_rule_trigger } = utils
 
-// // prettier-ignore
-// const PLV8_UTILS = (() => {
-// const log = str => plv8.elog(NOTICE, typeof str !== 'string' ? JSON.stringify(str) : str)
-// const execute = str => (log(str), plv8.execute(str))
-// const quote = v => typeof v === 'object' ? `'${JSON.stringify(v)}'` : typeof v === 'string' ? `'${v}'` : v
-// const select = (table, where) => execute(`SELECT * FROM ${table}${where ? ' WHERE ' + Object.entries(where).map(([k, v]) => `"${k}" = ${typeof v === 'object' ? `'${JSON.stringify(v)}'` : typeof v === 'string' ? `'${v}'` : v}`).join(' AND ') : ''};`)
-// const insert = (table, object) => execute(`INSERT INTO ${table} (${Object.keys(object).map(k => `"${k}"`)}.join(', ')) VALUES (${Object.values(object).map(quote).join(', ')});`)
-// const update = (table, object) => execute(`UPDATE ${table} SET ${Object.entries(object).map(([k, v]) => `"${k}" = ${quote(v)}`).join(',\n')} WHERE id = ${object.id};`)
-// const upsert = (table, object) => execute(`INSERT INTO ${table} (${Object.keys(object).map(k => `"${k}"`)}.join(', ')) VALUES (${Object.values(object).map(quote).join(', ')}) ON CONFLICT DO UPDATE SET ${Object.entries(object).map(([k, v]) => `"${k}" = ${quote(v)}`).join(',\n')};`)
-// const del = (table, object) => execute(`DELETE FROM ${table} WHERE id = ${object.id};`)
-// const instrument = select('instrument', { id: instrument_id })[0]
-// instrument.resolution = 'approved'
-// update('instrument', instrument)
-// return [instrument]
-// }).toString().slice(8, -1)
+const ADDITIONAL_COLUMNS = `
+  "source" "source" NOT NULL DEFAULT 'manual',
+  "resolution" "resolution",
+  "updated_by" TEXT NOT NULL,
+  "updated_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "last_change" INT,
+  "valid" TSTZRANGE NOT NULL DEFAULT TSTZRANGE(NOW(), NULL),`
 
 // prettier-ignore
 const PLV8_UTILS = (() => {
@@ -25,13 +17,6 @@ const quote = v => typeof v === 'object' ? `'${JSON.stringify(v)}'` : typeof v =
 const update = (table, changeset, where) => execute(`UPDATE ${table} SET ${Object.entries(changeset).map(([k, v]) => `"${k}" = ${quote(v)}`).join(',\n')}${where ? ' WHERE ' + Object.entries(where).map(([k, v]) => `"${k}" = ${typeof v === 'object' ? `'${JSON.stringify(v)}'` : typeof v === 'string' ? `'${v}'` : v}`).join(' AND ') : ''} RETURNING *;`)
 
 }).toString().slice(8, -1)
-
-const ADDITIONAL_COLUMNS = `
-  "source" "source" NOT NULL DEFAULT 'manual',
-  "resolution" "resolution",
-  "valid" TSTZRANGE NOT NULL DEFAULT TSTZRANGE(NOW(), NULL),
-  "last_update" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "last_change" INT,`
 
 const scenarios_modeling = [
   {
@@ -68,7 +53,7 @@ FOR EACH ROW EXECUTE FUNCTION permission();
 CREATE TRIGGER history BEFORE INSERT OR UPDATE OR DELETE ON "instrument"
 FOR EACH ROW EXECUTE FUNCTION history();
 
-SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg_track_table","args":{"table":{"name":"instrument","schema":"public"}}}');
+SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bulk","args":[{"type":"pg_track_table","args":{"table":{"name":"instrument","schema":"public"}}},{"type":"pg_create_insert_permission","args":{"table":{"name":"instrument","schema":"public"},"role":"user","permission":{"check":{},"allow_upsert":true,"backend_only":false,"set":{},"columns":["id","uid","name","country","currency","source","resolution","updated_by","updated_at","last_change","valid"]}}},{"type":"pg_create_select_permission","args":{"table":{"name":"instrument","schema":"public"},"role":"user","permission":{"columns":["id","uid","name","country","currency","source","resolution","updated_by","updated_at","last_change","valid"],"computed_fields":[],"backend_only":false,"filter":{},"limit":null,"allow_aggregations":true}}},{"type":"pg_create_update_permission","args":{"table":{"name":"instrument","schema":"public"},"role":"user","permission":{"columns":["id","uid","name","country","currency","source","resolution","updated_by","updated_at","last_change","valid"],"filter":{},"backend_only":false,"set":{},"check":{}}}},{"type":"pg_create_delete_permission","args":{"table":{"name":"instrument","schema":"public"},"role":"user","permission":{"backend_only":false,"filter":{}}}}]}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
 `,
       },
       {
@@ -93,7 +78,7 @@ FOR EACH ROW EXECUTE FUNCTION permission();
 CREATE TRIGGER history BEFORE INSERT OR UPDATE OR DELETE ON "equity"
 FOR EACH ROW EXECUTE FUNCTION history();
 
-SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg_track_table","args":{"table":{"name":"equity","schema":"public"}}}');
+SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bulk","args":[{"type":"pg_track_table","args":{"table":{"name":"equity","schema":"public"}}},{"type":"pg_create_insert_permission","args":{"table":{"name":"equity","schema":"public"},"role":"user","permission":{"check":{},"allow_upsert":true,"backend_only":false,"set":{},"columns":["issuer","share_number","id","uid","name","country","currency","source","resolution","updated_by","updated_at","last_change","valid"]}}},{"type":"pg_create_select_permission","args":{"table":{"name":"equity","schema":"public"},"role":"user","permission":{"columns":["issuer","share_number","id","uid","name","country","currency","source","resolution","updated_by","updated_at","last_change","valid"],"computed_fields":[],"backend_only":false,"filter":{},"limit":null,"allow_aggregations":true}}},{"type":"pg_create_update_permission","args":{"table":{"name":"equity","schema":"public"},"role":"user","permission":{"columns":["issuer","share_number","id","uid","name","country","currency","source","resolution","updated_by","updated_at","last_change","valid"],"filter":{},"backend_only":false,"set":{},"check":{}}}},{"type":"pg_create_delete_permission","args":{"table":{"name":"equity","schema":"public"},"role":"user","permission":{"backend_only":false,"filter":{}}}}]}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
 `,
       },
       {
@@ -117,7 +102,7 @@ FOR EACH ROW EXECUTE FUNCTION permission();
 CREATE TRIGGER history BEFORE INSERT OR UPDATE OR DELETE ON "preferred"
 FOR EACH ROW EXECUTE FUNCTION history();
 
-SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg_track_table","args":{"table":{"name":"preferred","schema":"public"}}}');
+SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bulk","args":[{"type":"pg_track_table","args":{"table":{"name":"preferred","schema":"public"}}},{"type":"pg_create_insert_permission","args":{"table":{"name":"preferred","schema":"public"},"role":"user","permission":{"check":{},"allow_upsert":true,"backend_only":false,"set":{},"columns":["rate","id","uid","name","country","currency","issuer","share_number","source","resolution","updated_by","updated_at","last_change","valid"]}}},{"type":"pg_create_select_permission","args":{"table":{"name":"preferred","schema":"public"},"role":"user","permission":{"columns":["rate","id","uid","name","country","currency","issuer","share_number","source","resolution","updated_by","updated_at","last_change","valid"],"computed_fields":[],"backend_only":false,"filter":{},"limit":null,"allow_aggregations":true}}},{"type":"pg_create_update_permission","args":{"table":{"name":"preferred","schema":"public"},"role":"user","permission":{"columns":["rate","id","uid","name","country","currency","issuer","share_number","source","resolution","updated_by","updated_at","last_change","valid"],"filter":{},"backend_only":false,"set":{},"check":{}}}},{"type":"pg_create_delete_permission","args":{"table":{"name":"preferred","schema":"public"},"role":"user","permission":{"backend_only":false,"filter":{}}}}]}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
 `,
       },
       {
@@ -141,7 +126,7 @@ FOR EACH ROW EXECUTE FUNCTION permission();
 CREATE TRIGGER history BEFORE INSERT OR UPDATE OR DELETE ON "bond"
 FOR EACH ROW EXECUTE FUNCTION history();
 
-SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg_track_table","args":{"table":{"name":"bond","schema":"public"}}}');
+SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bulk","args":[{"type":"pg_track_table","args":{"table":{"name":"bond","schema":"public"}}},{"type":"pg_create_insert_permission","args":{"table":{"name":"bond","schema":"public"},"role":"user","permission":{"check":{},"allow_upsert":true,"backend_only":false,"set":{},"columns":["maturity_date","id","uid","name","country","currency","source","resolution","updated_by","updated_at","last_change","valid"]}}},{"type":"pg_create_select_permission","args":{"table":{"name":"bond","schema":"public"},"role":"user","permission":{"columns":["maturity_date","id","uid","name","country","currency","source","resolution","updated_by","updated_at","last_change","valid"],"computed_fields":[],"backend_only":false,"filter":{},"limit":null,"allow_aggregations":true}}},{"type":"pg_create_update_permission","args":{"table":{"name":"bond","schema":"public"},"role":"user","permission":{"columns":["maturity_date","id","uid","name","country","currency","source","resolution","updated_by","updated_at","last_change","valid"],"filter":{},"backend_only":false,"set":{},"check":{}}}},{"type":"pg_create_delete_permission","args":{"table":{"name":"bond","schema":"public"},"role":"user","permission":{"backend_only":false,"filter":{}}}}]}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
 `,
       },
       {
@@ -169,11 +154,11 @@ FOR EACH ROW EXECUTE FUNCTION permission();
 CREATE TRIGGER history BEFORE INSERT OR UPDATE OR DELETE ON "coupon"
 FOR EACH ROW EXECUTE FUNCTION history();
 
-SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg_track_table","args":{"table":{"name":"coupon","schema":"public"}}}');
+SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bulk","args":[{"type":"pg_track_table","args":{"table":{"name":"coupon","schema":"public"}}},{"type":"pg_create_insert_permission","args":{"table":{"name":"coupon","schema":"public"},"role":"user","permission":{"check":{},"allow_upsert":true,"backend_only":false,"set":{},"columns":["id","bond_id","date","currency","coupon","source","resolution","updated_by","updated_at","last_change","valid"]}}},{"type":"pg_create_select_permission","args":{"table":{"name":"coupon","schema":"public"},"role":"user","permission":{"columns":["id","bond_id","date","currency","coupon","source","resolution","updated_by","updated_at","last_change","valid"],"computed_fields":[],"backend_only":false,"filter":{},"limit":null,"allow_aggregations":true}}},{"type":"pg_create_update_permission","args":{"table":{"name":"coupon","schema":"public"},"role":"user","permission":{"columns":["id","bond_id","date","currency","coupon","source","resolution","updated_by","updated_at","last_change","valid"],"filter":{},"backend_only":false,"set":{},"check":{}}}},{"type":"pg_create_delete_permission","args":{"table":{"name":"coupon","schema":"public"},"role":"user","permission":{"backend_only":false,"filter":{}}}}]}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
 `,
       },
     ],
-    business_object_insert_sql,
+    business_object_insert,
   },
   {
     name: 'Modeling - Business Rule',
@@ -208,7 +193,7 @@ ${PLV8_UTILS}return update('instrument', { resolution: 'approved' }, { id: instr
 $function$;
 COMMENT ON FUNCTION approve(instrument_id integer) IS 'This is the rule function';
 
-SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg_track_function","args":{"function":{"name":"approve","schema":"public"},"configuration":{"exposed_as":"mutation"},"source":"default"}}');
+SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bulk","args":[{"type":"pg_track_function","args":{"function":{"name":"approve","schema":"public"},"configuration":{"exposed_as":"mutation"}}},{"type":"pg_create_function_permission","args":{"function":{"schema":"public","name":"approve"},"role":"user"}}]}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
 `,
       },
       {
@@ -234,7 +219,7 @@ RETURN QUERY UPDATE "instrument" SET "resolution" = 'rejected' WHERE id = instru
 END$function$;
 
 
-SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg_track_function","args":{"function":{"name":"reject","schema":"public"},"configuration":{"exposed_as":"mutation"},"source":"default"}}');
+SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bulk","args":[{"type":"pg_track_function","args":{"function":{"name":"reject","schema":"public"},"configuration":{"exposed_as":"mutation"}}},{"type":"pg_create_function_permission","args":{"function":{"schema":"public","name":"reject"},"role":"user"}}]}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
 `,
       },
       {
@@ -258,7 +243,7 @@ RETURN QUERY SELECT * FROM instrument WHERE resolution IS NULL;
 END$function$;
 
 
-SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg_track_function","args":{"function":{"name":"candidates","schema":"public"},"configuration":{"exposed_as":"query"},"source":"default"}}');
+SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bulk","args":[{"type":"pg_track_function","args":{"function":{"name":"candidates","schema":"public"},"configuration":{"exposed_as":"query"}}},{"type":"pg_create_function_permission","args":{"function":{"schema":"public","name":"candidates"},"role":"user"}}]}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
 `,
       },
       {
@@ -295,11 +280,11 @@ LIMIT 1;
 END$function$;
 
 
-SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg_track_function","args":{"function":{"name":"golden","schema":"public"},"configuration":{"exposed_as":"query"},"source":"default"}}');
+SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bulk","args":[{"type":"pg_track_function","args":{"function":{"name":"golden","schema":"public"},"configuration":{"exposed_as":"query"}}},{"type":"pg_create_function_permission","args":{"function":{"schema":"public","name":"golden"},"role":"user"}}]}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
 `,
       },
     ],
-    business_rule_insert_sql,
+    business_rule_insert,
   },
 ]
 
@@ -315,7 +300,7 @@ for await (const { name, tests, ...rest } of scenarios) {
       else await Deno.test(`${name} #${k} #${i}`, async () => assertEquals(await fn(...input), output))
       // if (!error) {
       //   const sql = await fn(...input)
-      //   const response = await execute_hasura_sql(sql)
+      //   const response = await execute_sql(sql)
       //   console.log(`${name} #${k} #${i}`, response.status, await response.text())
       // }
     }
@@ -324,19 +309,16 @@ for await (const { name, tests, ...rest } of scenarios) {
 export default scenarios
 
 //! PRE TEST
-await execute_hasura_sql(`
+await execute_sql(`
 DROP SCHEMA IF EXISTS public CASCADE;
 CREATE SCHEMA public;
 CREATE EXTENSION IF NOT EXISTS plv8;
 CREATE EXTENSION IF NOT EXISTS pg_net;
+SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"clear_metadata","args":{}}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
+SELECT pg_sleep(1.5);
+CREATE TYPE "role" AS ENUM ('user', 'steward', 'admin', 'robot');
 CREATE TYPE "source" AS ENUM ('manual', 'bloomberg', 'reuters');
 CREATE TYPE "resolution" AS ENUM ('rejected', 'approved');
-CREATE TYPE "role" AS ENUM ('user', 'steward', 'admin', 'robot');
-CREATE TABLE "user" (
-  "id" SERIAL NOT NULL,
-  "role" "role" NOT NULL,${ADDITIONAL_COLUMNS}
-  CONSTRAINT "PK_user" PRIMARY KEY ("id")
-);
 CREATE TABLE "history" (
   "id" SERIAL NOT NULL,
   "table" TEXT NOT NULL,
@@ -363,54 +345,61 @@ IF (TG_OP = 'DELETE') THEN
   RETURN OLD;
 END IF;
 END$trigger$;
+${business_object_trigger}
+${business_rule_trigger}
+CREATE TABLE "permission" (
+  "id" SERIAL NOT NULL,
+  "target" TEXT NOT NULL, -- role or user
+  "rule" TEXT NOT NULL, -- REFERENCES "business_rule"("rule")
+  CONSTRAINT "PK_permission" PRIMARY KEY ("id")
+);
 CREATE FUNCTION permission() RETURNS trigger
-LANGUAGE plpgsql AS $trigger$BEGIN
-IF (TG_OP = 'INSERT') THEN
-  IF ((current_setting('hasura.user')::jsonb)->>'x-hasura-role' != 'admin') THEN
-    RAISE '%', 'Only an admin can insert';
-  END IF;
-  RETURN NEW;
-END IF;
-IF (TG_OP = 'UPDATE') THEN
-  IF ((current_setting('hasura.user')::jsonb)->>'x-hasura-role' != 'admin') THEN
-    RAISE '%', 'Only an admin can update';
-  END IF;
-  RETURN NEW;
-END IF;
-IF (TG_OP = 'DELETE') THEN
-  IF ((current_setting('hasura.user')::jsonb)->>'x-hasura-role' != 'admin') THEN
-    RAISE '%', 'Only an admin can delete';
-  END IF;
-  RETURN OLD;
-END IF;
-END$trigger$;
+LANGUAGE plv8 AS $trigger$
+const { execute } = plv8
+let [{ 'x-hasura-user-id': id, 'x-hasura-role': role }] = execute(\`SELECT * FROM jsonb_to_record(current_setting('hasura.user', true)::jsonb) AS data("x-hasura-user-id" "text", "x-hasura-role" "text");\`)
+id = id || ''
+role = role || 'anon'
+if (NEW) NEW.updated_by = id
+if (NEW) NEW.updated_at = new Date()
+const permissions = execute(\`SELECT * FROM permission WHERE target IN ('\${id}', '\${role}');\`)
+if (permissions.length === 0) throw new Error(\`No permissions defined for \${id} / \${role}\`)
+permissions.forEach(v => plv8.execute(\`SELECT \${v.rule}();\`))
+return NEW
+$trigger$;
+CREATE FUNCTION allow() RETURNS VOID LANGUAGE plv8 STABLE AS $$return$$;
+CREATE FUNCTION deny() RETURNS VOID LANGUAGE plv8 STABLE AS $$throw new Error('deny')$$;
+INSERT INTO permission (target, rule) VALUES ('admin', 'allow');
+INSERT INTO permission (target, rule) VALUES ('user', 'deny');
+INSERT INTO permission (target, rule) VALUES ('anon', 'deny');
+SELECT pg_sleep(.5);
+SELECT deny() FROM (SELECT * FROM net._http_response WHERE status_code != 200) AS error;
 `)
 //! POST TEST
-await execute_hasura_sql(trigger_table_insert_sql('business_object'))
-await execute_hasura_sql(trigger_table_insert_sql('business_rule'))
-await execute_hasura_sql(
+await execute_sql(
   scenarios_modeling[0].tests
     .filter(({ input: [{ object }] }) => object)
     .map(
       ({ input: [{ object, inherits = [], fields = {}, comments = {} }] }) =>
         `INSERT INTO business_object("object", "inherits", "fields", "comments")
-VALUES ('${object}', '${JSON.stringify(inherits)}', '${JSON.stringify(fields)}', '${JSON.stringify(comments)}');`,
+VALUES ('${object}', '${JSON.stringify(inherits)}', '${JSON.stringify(fields)}', '${JSON.stringify(comments)}');
+SELECT pg_sleep(.5);`,
     )
     .filter(v => v)
     .join('\n'),
 )
-await execute_hasura_sql(
+await execute_sql(
   scenarios_modeling[1].tests
     .filter(({ input: [{ rule }] }) => rule)
     .map(
       ({ input: [{ rule, language = 'sql', type = 'mutation', input = {}, output = 'null', code, comments = {} }] }) =>
         `INSERT INTO business_rule("rule", "language", "type", "input", "output", "code", "comments")
-VALUES ('${rule}', '${language}', '${type}', '${JSON.stringify(input)}', '${output}', $code$${code}$code$, '${JSON.stringify(comments)}');`,
+VALUES ('${rule}', '${language}', '${type}', '${JSON.stringify(input)}', '${output}', $code$${code}$code$, '${JSON.stringify(comments)}');
+SELECT pg_sleep(.5);`,
     )
     .filter(v => v)
     .join('\n'),
 )
-await execute_hasura_sql(`
+await execute_sql(`
 INSERT INTO instrument (uid, name, country, currency) VALUES ('FR-018066960', 'AF-PRIVATE-DEBT', 'FR', 'EUR');
 INSERT INTO equity (uid, name, country, currency, issuer, share_number) VALUES ('FR-297920657', 'EPA:BNP', 'FR', 'EUR', 'BNP', '730372026');
 INSERT INTO preferred (uid, name, country, currency, issuer, share_number, rate) VALUES ('FR-320404407', 'NASDAQ:TSLA', 'US', 'USD', 'TESLA', '194491300', 0.07);
@@ -429,7 +418,7 @@ INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (8, '2027-01-01', 'U
 INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (9, '2022-01-01', 'USD', 0.07);
 INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (9, '2023-01-01', 'USD', 0.07);
 `)
-await execute_hasura_sql(`
+await execute_sql(`
 SELECT reject(id) FROM candidates() WHERE "uid" = 'FR-018066960' AND "country" = 'FR';
 SELECT approve(id) FROM instrument WHERE "uid" = 'FR-018066960' AND "country" = 'FR';
 SELECT approve(id) FROM instrument WHERE "uid" = 'FR-018066960' AND "country" = 'FR'; -- SAME QUERY AS ABOVE, WILL NOT APPEAR IN history TABLE
@@ -450,28 +439,5 @@ INSERT INTO instrument (uid, name, country, currency, source) VALUES ('FR-018066
 -- SELECT * FROM history WHERE row['uid']::text = 'FR-018066960'; -- THIS DOESN'T WORKS
 -- SELECT id FROM candidates();
 -- SELECT row['resolution'] FROM history WHERE "table" = 'instrument' AND "row_id" = 1 AND date < '2022-03-10' ORDER BY date DESC LIMIT 2;
+SELECT deny() FROM (SELECT * FROM net._http_response WHERE status_code != 200) AS error;
 `)
-
-// TODO:
-// 3. add user roles/rights for row level (read, write, update, delete)
-// 4. add user roles/business logic for feature level (admin, no 4eyes)
-
-// await execute_hasura_sql(`
-// SELECT $$1. Valentin propose FR-018066960, pending$$;
-// INSERT INTO instrument (uid, name, country, currency) VALUES ('FR-018066960', 'AF-PRIVATE-DEBT', 'FR', 'EUR');
-
-// SELECT $$2. Clément approve FR-018066960, valid$$;
-// SELECT id FROM candidates();
-// SELECT approve(1);
-
-// SELECT $$3. Laurent propose FR-297920657, invalid car unauthorized, pas les droits de création$$;
-// -- INSERT INTO equity (uid, name, country, currency, issuer, share_number) VALUES ('FR-297920657', 'EPA:BNP', 'FR', 'EUR', 'BNP', '730372026');
-// -- SELECT id FROM candidates();
-// -- assert number of candidates is the same
-
-// SELECT $$4. Serge propose FR-320404407, valid, bypass du 4eyes car superadmin$$;
-// INSERT INTO preferred (uid, name, country, currency, issuer, share_number, rate) VALUES ('FR-320404407', 'NASDAQ:TSLA', 'US', 'USD', 'TESLA', '194491300', 0.07);
-
-// SELECT $$5. Robot-Bloomberg propose FR-519487830, source Bloomberg$$;
-// INSERT INTO equity (uid, name, country, currency, issuer, share_number, source) VALUES ('FR-519487830', 'AB-PREF-7%', 'FR', 'EUR', 'ALPHABET', '693264265', 'bloomberg');
-// `)
