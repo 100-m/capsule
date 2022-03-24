@@ -315,14 +315,24 @@ CREATE SCHEMA public;
 CREATE EXTENSION IF NOT EXISTS plv8;
 CREATE EXTENSION IF NOT EXISTS pg_net;
 SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"clear_metadata","args":{}}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
-SELECT pg_sleep(1.5);
+SELECT pg_sleep(2);
 CREATE TYPE "source" AS ENUM ('manual', 'bloomberg', 'reuters');
 CREATE TYPE "resolution" AS ENUM ('rejected', 'approved');
-${history_feature}
-${business_object_feature}
-${business_rule_feature}
-${permission_feature}
-SELECT pg_sleep(.5);
+`)
+await execute_sql(history_feature)
+await execute_sql(business_object_feature)
+await execute_sql(business_rule_feature)
+await execute_sql(permission_feature)
+await execute_sql(`
+INSERT INTO permission (target, code) VALUES ('admin', '');
+INSERT INTO permission (target, code) VALUES ('user', $$
+// NOTE: We must use loose comparison == or != or cast values before comparing because of plv8
+if (TG_OP === 'INSERT' && NEW.resolution) throw new Error('4-eyes violation detected')
+if (TG_OP === 'UPDATE' && NEW.resolution != OLD.resolution) {
+  const [{ creator }] = plv8.execute(\`SELECT row['updated_by'] AS creator FROM history WHERE "table" = '\${TG_TABLE_NAME}' AND operation = 'INSERT' AND row['id']::int = \${NEW.id};\`)
+  if (creator == NEW.updated_by) throw new Error('4-eyes violation detected')
+}
+$$);
 `)
 await execute_sql(
   scenarios_modeling[0].tests
