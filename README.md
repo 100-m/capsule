@@ -61,7 +61,7 @@ Le système d'Authentification permet la gestion des utilisateurs. Creation/Supp
 Le système d'Authentification génère un token contenant le user/role. JWT  
 Le système d'Authentification peut être un SAAS (Auth0, Okta) ou ON-PREMISE (gotrue, keycloak).  
 Le système d'Authentification peut gérer des connections externe. SSO/Social  
-Le système d'Authentification peut gérer des fonctionnalités avancées. MFA/magic-link  
+Le système d'Authentification peut gérer des fonctionnalités avancées. MFA/magic-link
 
 Un user à un seul role. par DEFAULT "user".  
 Un user non-authentifié à le role "anon".  
@@ -202,7 +202,7 @@ mutation {
 ```gql
 mutation {
   insert_equity_one(
-    object: { uid: "FR-297920657", name: "EPA:BNP", country: "FR", currency: "EUR", issuer: "BNP", share_number: 730372026, source: "manuel", user_id: 1 }
+    object: { uid: "FR-297920657", name: "EPA:BNP", country: "FR", currency: "EUR", issuer: "BNP", share_number: 730372026 }
   ) {
     id
   }

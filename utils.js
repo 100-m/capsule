@@ -159,15 +159,15 @@ CREATE TABLE "${object}" (
   "updated_by" TEXT NOT NULL,
   "updated_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "last_change" INT,
-  "valid" TSTZRANGE NOT NULL DEFAULT TSTZRANGE(NOW(), NULL),
+  "valid" TSTZRANGE,
   CONSTRAINT "UNIQUE_${object}" UNIQUE (${str_unique}),
   CONSTRAINT "PK_${object}" PRIMARY KEY ("id")
 )${str_inherits};
 ${str_comments}
 
-CREATE TRIGGER permission BEFORE INSERT OR UPDATE OR DELETE ON "${object}"
+CREATE TRIGGER "01_permission" BEFORE INSERT OR UPDATE OR DELETE ON "${object}"
 FOR EACH ROW EXECUTE FUNCTION permission();
-CREATE TRIGGER history BEFORE INSERT OR UPDATE OR DELETE ON "${object}"
+CREATE TRIGGER "02_history" BEFORE INSERT OR UPDATE OR DELETE ON "${object}"
 FOR EACH ROW EXECUTE FUNCTION history();
 
 SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bulk","args":[{"type":"pg_track_table","args":{"table":{"name":"${object}","schema":"public"}}},{"type":"pg_create_insert_permission","args":{"table":{"name":"${object}","schema":"public"},"role":"user","permission":{"check":{},"allow_upsert":true,"backend_only":false,"set":{},"columns":[${str_columns_track}]}}},{"type":"pg_create_select_permission","args":{"table":{"name":"${object}","schema":"public"},"role":"user","permission":{"columns":[${str_columns_track}],"computed_fields":[],"backend_only":false,"filter":{},"limit":null,"allow_aggregations":true}}},{"type":"pg_create_update_permission","args":{"table":{"name":"${object}","schema":"public"},"role":"user","permission":{"columns":[${str_columns_track}],"filter":{},"backend_only":false,"set":{},"check":{}}}},{"type":"pg_create_delete_permission","args":{"table":{"name":"${object}","schema":"public"},"role":"user","permission":{"backend_only":false,"filter":{}}}}]}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
@@ -235,7 +235,7 @@ DROP FUNCTION ${rule};
 SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg_untrack_function","args":{"function":{"name":"${rule}","schema":"public"},"configuration":{"exposed_as":"${type}"}}}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
 `
 }
-export const business_object_trigger = `
+export const business_object_feature = `
 CREATE FUNCTION business_object()
 RETURNS TRIGGER
 LANGUAGE plv8 AS $trigger$
@@ -267,7 +267,7 @@ FOR EACH ROW EXECUTE FUNCTION business_object();
 
 SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bulk","args":[{"type":"pg_track_table","args":{"table":{"name":"business_object","schema":"public"}}},{"type":"pg_create_insert_permission","args":{"table":{"name":"business_object","schema":"public"},"role":"user","permission":{"check":{},"allow_upsert":true,"backend_only":false,"set":{},"columns":["object","inherits","fields","comments"]}}},{"type":"pg_create_select_permission","args":{"table":{"name":"business_object","schema":"public"},"role":"user","permission":{"columns":["object","inherits","fields","comments"],"computed_fields":[],"backend_only":false,"filter":{},"limit":null,"allow_aggregations":true}}},{"type":"pg_create_update_permission","args":{"table":{"name":"business_object","schema":"public"},"role":"user","permission":{"columns":["object","inherits","fields","comments"],"filter":{},"backend_only":false,"set":{},"check":{}}}},{"type":"pg_create_delete_permission","args":{"table":{"name":"business_object","schema":"public"},"role":"user","permission":{"backend_only":false,"filter":{}}}}]}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
 `
-export const business_rule_trigger = `
+export const business_rule_feature = `
 CREATE FUNCTION business_rule()
 RETURNS TRIGGER
 LANGUAGE plv8 AS $trigger$
@@ -301,4 +301,93 @@ CREATE TRIGGER business_rule BEFORE INSERT OR UPDATE OR DELETE ON business_rule
 FOR EACH ROW EXECUTE FUNCTION business_rule();
 
 SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bulk","args":[{"type":"pg_track_table","args":{"table":{"name":"business_rule","schema":"public"}}},{"type":"pg_create_insert_permission","args":{"table":{"name":"business_rule","schema":"public"},"role":"user","permission":{"check":{},"allow_upsert":true,"backend_only":false,"set":{},"columns":["rule","language","type","input","output","code","comments"]}}},{"type":"pg_create_select_permission","args":{"table":{"name":"business_rule","schema":"public"},"role":"user","permission":{"columns":["rule","language","type","input","output","code","comments"],"computed_fields":[],"backend_only":false,"filter":{},"limit":null,"allow_aggregations":true}}},{"type":"pg_create_update_permission","args":{"table":{"name":"business_rule","schema":"public"},"role":"user","permission":{"columns":["rule","language","type","input","output","code","comments"],"filter":{},"backend_only":false,"set":{},"check":{}}}},{"type":"pg_create_delete_permission","args":{"table":{"name":"business_rule","schema":"public"},"role":"user","permission":{"backend_only":false,"filter":{}}}}]}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
+`
+export const history_feature = `
+CREATE TABLE "history" (
+  "id" SERIAL NOT NULL,
+  "table" TEXT NOT NULL,
+  "operation" TEXT NOT NULL,
+  "row" JSONB,
+  CONSTRAINT "PK_history" PRIMARY KEY ("id")
+);
+CREATE FUNCTION history() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER AS $trigger$BEGIN
+IF (TG_OP = 'INSERT') THEN
+  INSERT INTO history ("table", "operation", "row") VALUES (TG_RELNAME, 'INSERT', row_to_json(NEW));
+  RETURN NEW;
+END IF;
+IF (TG_OP = 'UPDATE') THEN
+  IF (OLD != NEW) THEN
+    -- OLD.history = NULL;
+    INSERT INTO history ("table", "operation", "row") VALUES (TG_RELNAME, 'UPDATE', row_to_json(NEW)) RETURNING id INTO NEW.last_change;
+    -- NEW.history = row_to_json(OLD)::jsonb;
+  END IF;
+  RETURN NEW;
+END IF;
+IF (TG_OP = 'DELETE') THEN
+  INSERT INTO history ("table", "operation", "row") VALUES (TG_RELNAME, 'DELETE', row_to_json(OLD));
+  RETURN OLD;
+END IF;
+END$trigger$;
+
+SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bulk","args":[{"type":"pg_track_table","args":{"table":{"name":"history","schema":"public"}}},{"type":"pg_create_insert_permission","args":{"table":{"name":"history","schema":"public"},"role":"user","permission":{"check":{},"allow_upsert":true,"backend_only":false,"set":{},"columns":["object","inherits","fields","comments"]}}},{"type":"pg_create_select_permission","args":{"table":{"name":"history","schema":"public"},"role":"user","permission":{"columns":["object","inherits","fields","comments"],"computed_fields":[],"backend_only":false,"filter":{},"limit":null,"allow_aggregations":true}}},{"type":"pg_create_update_permission","args":{"table":{"name":"history","schema":"public"},"role":"user","permission":{"columns":["object","inherits","fields","comments"],"filter":{},"backend_only":false,"set":{},"check":{}}}},{"type":"pg_create_delete_permission","args":{"table":{"name":"business_object","schema":"public"},"role":"user","permission":{"backend_only":false,"filter":{}}}}]}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
+`
+export const permission_feature = `
+CREATE TABLE "permission" (
+  "id" SERIAL NOT NULL,
+  "target" TEXT NOT NULL, -- role or user
+  "code" TEXT NOT NULL,
+  -- "rule" TEXT NOT NULL, -- REFERENCES "business_rule"("rule")
+  CONSTRAINT "PK_permission" PRIMARY KEY ("id")
+);
+CREATE FUNCTION permission() RETURNS trigger
+LANGUAGE plv8 AS $trigger$
+const { execute } = plv8
+let [{ 'x-hasura-user-id': id, 'x-hasura-role': role }] = execute(\`SELECT * FROM jsonb_to_record(current_setting('hasura.user', true)::jsonb) AS data("x-hasura-user-id" "text", "x-hasura-role" "text");\`)
+if (!role) role = 'anon'
+if (!id) id = role
+if (NEW) NEW.updated_by = id
+if (NEW) NEW.updated_at = new Date()
+const permissions = execute(\`SELECT * FROM permission WHERE target IN ('\${id}', '\${role}');\`)
+if (permissions.length === 0) throw new Error(\`No permissions defined for user "\${id}" and role "\${role}"\`)
+
+// 1st implementation: using a sql function defined manually
+// https://www.postgresql.org/docs/current/plpgsql-trigger.html
+// permissions.forEach(v => plv8.execute(\`SELECT \${v.rule}($$\${JSON.stringify({ NEW, OLD, TG_NAME, TG_WHEN, TG_LEVEL, TG_OP, TG_RELID, TG_TABLE_NAME, TG_TABLE_SCHEMA })}$$::jsonb);\`))
+
+// 2nd implementation: eval js code directly
+permissions.forEach(v => eval(v.code))
+
+return NEW
+$trigger$;
+
+SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bulk","args":[{"type":"pg_track_table","args":{"table":{"name":"permission","schema":"public"}}},{"type":"pg_create_insert_permission","args":{"table":{"name":"permission","schema":"public"},"role":"user","permission":{"check":{},"allow_upsert":true,"backend_only":false,"set":{},"columns":["object","inherits","fields","comments"]}}},{"type":"pg_create_select_permission","args":{"table":{"name":"permission","schema":"public"},"role":"user","permission":{"columns":["object","inherits","fields","comments"],"computed_fields":[],"backend_only":false,"filter":{},"limit":null,"allow_aggregations":true}}},{"type":"pg_create_update_permission","args":{"table":{"name":"permission","schema":"public"},"role":"user","permission":{"columns":["object","inherits","fields","comments"],"filter":{},"backend_only":false,"set":{},"check":{}}}},{"type":"pg_create_delete_permission","args":{"table":{"name":"business_object","schema":"public"},"role":"user","permission":{"backend_only":false,"filter":{}}}}]}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
+
+INSERT INTO permission (target, code) VALUES ('admin', '');
+INSERT INTO permission (target, code) VALUES ('user', $$
+// NOTE: We must use loose comparison == or != or cast values before comparing because of plv8
+if (TG_OP === 'INSERT' && NEW.resolution) throw new Error('4-eyes violation detected')
+if (TG_OP === 'UPDATE' && NEW.resolution != OLD.resolution) {
+  const [{ creator }] = plv8.execute(\`SELECT row['updated_by'] AS creator FROM history WHERE "table" = '\${TG_TABLE_NAME}' AND operation = 'INSERT' AND row['id']::int = \${NEW.id};\`)
+  if (creator == NEW.updated_by) throw new Error('4-eyes violation detected')
+}
+$$);
+
+
+-- // 1st implementation: using a sql function defined manually
+-- CREATE FUNCTION allow(context jsonb) RETURNS VOID LANGUAGE plv8 STABLE AS $$return$$;
+-- CREATE FUNCTION deny(context jsonb) RETURNS VOID LANGUAGE plv8 STABLE AS $$throw new Error('deny')$$;
+-- CREATE FUNCTION steward(context jsonb) RETURNS VOID LANGUAGE plv8 STABLE AS $$
+-- const { NEW, OLD, TG_OP, TG_TABLE_NAME } = context
+-- // NOTE: We must use loose comparison == or != or cast values before comparing because of plv8
+-- if (TG_OP === 'INSERT' && NEW.resolution) throw new Error('4-eyes violation detected')
+-- if (TG_OP === 'UPDATE' && NEW.resolution != OLD.resolution) {
+--   const [{ creator }] = plv8.execute(\`SELECT row['updated_by'] AS creator FROM history WHERE "table" = '\${TG_TABLE_NAME}' AND operation = 'INSERT' AND row['id']::int = \${NEW.id};\`)
+--   if (creator == NEW.updated_by) throw new Error('4-eyes violation detected')
+-- }
+-- $$;
+-- INSERT INTO permission (target, rule) VALUES ('admin', 'allow');
+-- INSERT INTO permission (target, rule) VALUES ('user', 'check_steward');
+-- -- INSERT INTO permission (target, rule) VALUES ('user', 'deny');
+-- -- INSERT INTO permission (target, rule) VALUES ('anon', 'deny'); -- NOT NEEDED, deny by default
 `
