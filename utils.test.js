@@ -1,13 +1,5 @@
 import * as utils from './utils.js'
-const { execute_sql, business_object_insert, business_rule_insert, business_object_feature, business_rule_feature, history_feature, permission_feature } = utils
-
-const ADDITIONAL_COLUMNS = `
-  "source" "source" NOT NULL DEFAULT 'manual',
-  "resolution" "resolution",
-  "updated_by" TEXT NOT NULL,
-  "updated_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "last_change" INT,
-  "valid" TSTZRANGE,`
+const { execute_sql, business_object_insert, business_rule_insert, business_object_feature, business_rule_feature, triggers } = utils
 
 // prettier-ignore
 const PLV8_UTILS = (() => {
@@ -41,8 +33,12 @@ CREATE TABLE "instrument" (
   "uid" TEXT NOT NULL,
   "name" TEXT NOT NULL,
   "country" TEXT NOT NULL,
-  "currency" TEXT NOT NULL,${ADDITIONAL_COLUMNS}
-  CONSTRAINT "UNIQUE_instrument" UNIQUE ("uid", "name", "country", "currency"),
+  "currency" TEXT NOT NULL,
+  "source" "source" NOT NULL DEFAULT 'manual',
+  "resolution" "resolution",
+  "user" TEXT NOT NULL,
+  "asat" TSTZRANGE NOT NULL DEFAULT tstzrange(CURRENT_TIMESTAMP, NULL),
+  "asof" TSTZRANGE NOT NULL DEFAULT tstzrange(NULL, NULL),
   CONSTRAINT "PK_instrument" PRIMARY KEY ("id")
 );
 COMMENT ON TABLE "instrument" IS 'This is the instrument table';
@@ -50,10 +46,12 @@ COMMENT ON COLUMN "instrument"."uid" IS 'This is the instrument identifier used 
 
 CREATE TRIGGER "01_permission" BEFORE INSERT OR UPDATE OR DELETE ON "instrument"
 FOR EACH ROW EXECUTE FUNCTION permission();
-CREATE TRIGGER "02_history" BEFORE INSERT OR UPDATE OR DELETE ON "instrument"
-FOR EACH ROW EXECUTE FUNCTION history();
+CREATE TRIGGER "02_asat" BEFORE INSERT OR UPDATE OR DELETE ON "instrument"
+FOR EACH ROW WHEN (pg_trigger_depth() = 0) EXECUTE FUNCTION asat();
+CREATE TRIGGER "03_asof" BEFORE INSERT ON "instrument"
+FOR EACH ROW WHEN (pg_trigger_depth() = 0) EXECUTE FUNCTION asof();
 
-SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bulk","args":[{"type":"pg_track_table","args":{"table":{"name":"instrument","schema":"public"}}},{"type":"pg_create_insert_permission","args":{"table":{"name":"instrument","schema":"public"},"role":"user","permission":{"check":{},"allow_upsert":true,"backend_only":false,"set":{},"columns":["id","uid","name","country","currency","source","resolution","updated_by","updated_at","last_change","valid"]}}},{"type":"pg_create_select_permission","args":{"table":{"name":"instrument","schema":"public"},"role":"user","permission":{"columns":["id","uid","name","country","currency","source","resolution","updated_by","updated_at","last_change","valid"],"computed_fields":[],"backend_only":false,"filter":{},"limit":null,"allow_aggregations":true}}},{"type":"pg_create_update_permission","args":{"table":{"name":"instrument","schema":"public"},"role":"user","permission":{"columns":["id","uid","name","country","currency","source","resolution","updated_by","updated_at","last_change","valid"],"filter":{},"backend_only":false,"set":{},"check":{}}}},{"type":"pg_create_delete_permission","args":{"table":{"name":"instrument","schema":"public"},"role":"user","permission":{"backend_only":false,"filter":{}}}}]}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
+SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bulk","args":[{"type":"pg_track_table","args":{"table":{"name":"instrument","schema":"public"}}},{"type":"pg_create_insert_permission","args":{"table":{"name":"instrument","schema":"public"},"role":"user","permission":{"check":{},"allow_upsert":true,"backend_only":false,"set":{},"columns":["id","uid","name","country","currency","source","resolution","user","asat","asof"]}}},{"type":"pg_create_select_permission","args":{"table":{"name":"instrument","schema":"public"},"role":"user","permission":{"columns":["id","uid","name","country","currency","source","resolution","user","asat","asof"],"computed_fields":[],"backend_only":false,"filter":{},"limit":null,"allow_aggregations":true}}},{"type":"pg_create_update_permission","args":{"table":{"name":"instrument","schema":"public"},"role":"user","permission":{"columns":["id","uid","name","country","currency","source","resolution","user","asat","asof"],"filter":{},"backend_only":false,"set":{},"check":{}}}},{"type":"pg_create_delete_permission","args":{"table":{"name":"instrument","schema":"public"},"role":"user","permission":{"backend_only":false,"filter":{}}}}]}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
 `,
       },
       {
@@ -67,18 +65,24 @@ SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bu
         output: `
 CREATE TABLE "equity" (
   "issuer" TEXT NOT NULL,
-  "share_number" INTEGER NOT NULL,${ADDITIONAL_COLUMNS}
-  CONSTRAINT "UNIQUE_equity" UNIQUE ("uid", "name", "country", "currency", "issuer", "share_number"),
+  "share_number" INTEGER NOT NULL,
+  "source" "source" NOT NULL DEFAULT 'manual',
+  "resolution" "resolution",
+  "user" TEXT NOT NULL,
+  "asat" TSTZRANGE NOT NULL DEFAULT tstzrange(CURRENT_TIMESTAMP, NULL),
+  "asof" TSTZRANGE NOT NULL DEFAULT tstzrange(NULL, NULL),
   CONSTRAINT "PK_equity" PRIMARY KEY ("id")
 ) INHERITS ("instrument");
 
 
 CREATE TRIGGER "01_permission" BEFORE INSERT OR UPDATE OR DELETE ON "equity"
 FOR EACH ROW EXECUTE FUNCTION permission();
-CREATE TRIGGER "02_history" BEFORE INSERT OR UPDATE OR DELETE ON "equity"
-FOR EACH ROW EXECUTE FUNCTION history();
+CREATE TRIGGER "02_asat" BEFORE INSERT OR UPDATE OR DELETE ON "equity"
+FOR EACH ROW WHEN (pg_trigger_depth() = 0) EXECUTE FUNCTION asat();
+CREATE TRIGGER "03_asof" BEFORE INSERT ON "equity"
+FOR EACH ROW WHEN (pg_trigger_depth() = 0) EXECUTE FUNCTION asof();
 
-SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bulk","args":[{"type":"pg_track_table","args":{"table":{"name":"equity","schema":"public"}}},{"type":"pg_create_insert_permission","args":{"table":{"name":"equity","schema":"public"},"role":"user","permission":{"check":{},"allow_upsert":true,"backend_only":false,"set":{},"columns":["issuer","share_number","id","uid","name","country","currency","source","resolution","updated_by","updated_at","last_change","valid"]}}},{"type":"pg_create_select_permission","args":{"table":{"name":"equity","schema":"public"},"role":"user","permission":{"columns":["issuer","share_number","id","uid","name","country","currency","source","resolution","updated_by","updated_at","last_change","valid"],"computed_fields":[],"backend_only":false,"filter":{},"limit":null,"allow_aggregations":true}}},{"type":"pg_create_update_permission","args":{"table":{"name":"equity","schema":"public"},"role":"user","permission":{"columns":["issuer","share_number","id","uid","name","country","currency","source","resolution","updated_by","updated_at","last_change","valid"],"filter":{},"backend_only":false,"set":{},"check":{}}}},{"type":"pg_create_delete_permission","args":{"table":{"name":"equity","schema":"public"},"role":"user","permission":{"backend_only":false,"filter":{}}}}]}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
+SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bulk","args":[{"type":"pg_track_table","args":{"table":{"name":"equity","schema":"public"}}},{"type":"pg_create_insert_permission","args":{"table":{"name":"equity","schema":"public"},"role":"user","permission":{"check":{},"allow_upsert":true,"backend_only":false,"set":{},"columns":["issuer","share_number","id","uid","name","country","currency","source","resolution","user","asat","asof"]}}},{"type":"pg_create_select_permission","args":{"table":{"name":"equity","schema":"public"},"role":"user","permission":{"columns":["issuer","share_number","id","uid","name","country","currency","source","resolution","user","asat","asof"],"computed_fields":[],"backend_only":false,"filter":{},"limit":null,"allow_aggregations":true}}},{"type":"pg_create_update_permission","args":{"table":{"name":"equity","schema":"public"},"role":"user","permission":{"columns":["issuer","share_number","id","uid","name","country","currency","source","resolution","user","asat","asof"],"filter":{},"backend_only":false,"set":{},"check":{}}}},{"type":"pg_create_delete_permission","args":{"table":{"name":"equity","schema":"public"},"role":"user","permission":{"backend_only":false,"filter":{}}}}]}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
 `,
       },
       {
@@ -91,18 +95,24 @@ SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bu
         ],
         output: `
 CREATE TABLE "preferred" (
-  "rate" REAL NOT NULL,${ADDITIONAL_COLUMNS}
-  CONSTRAINT "UNIQUE_preferred" UNIQUE ("uid", "name", "country", "currency", "issuer", "share_number", "rate"),
+  "rate" REAL NOT NULL,
+  "source" "source" NOT NULL DEFAULT 'manual',
+  "resolution" "resolution",
+  "user" TEXT NOT NULL,
+  "asat" TSTZRANGE NOT NULL DEFAULT tstzrange(CURRENT_TIMESTAMP, NULL),
+  "asof" TSTZRANGE NOT NULL DEFAULT tstzrange(NULL, NULL),
   CONSTRAINT "PK_preferred" PRIMARY KEY ("id")
 ) INHERITS ("equity");
 
 
 CREATE TRIGGER "01_permission" BEFORE INSERT OR UPDATE OR DELETE ON "preferred"
 FOR EACH ROW EXECUTE FUNCTION permission();
-CREATE TRIGGER "02_history" BEFORE INSERT OR UPDATE OR DELETE ON "preferred"
-FOR EACH ROW EXECUTE FUNCTION history();
+CREATE TRIGGER "02_asat" BEFORE INSERT OR UPDATE OR DELETE ON "preferred"
+FOR EACH ROW WHEN (pg_trigger_depth() = 0) EXECUTE FUNCTION asat();
+CREATE TRIGGER "03_asof" BEFORE INSERT ON "preferred"
+FOR EACH ROW WHEN (pg_trigger_depth() = 0) EXECUTE FUNCTION asof();
 
-SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bulk","args":[{"type":"pg_track_table","args":{"table":{"name":"preferred","schema":"public"}}},{"type":"pg_create_insert_permission","args":{"table":{"name":"preferred","schema":"public"},"role":"user","permission":{"check":{},"allow_upsert":true,"backend_only":false,"set":{},"columns":["rate","id","uid","name","country","currency","issuer","share_number","source","resolution","updated_by","updated_at","last_change","valid"]}}},{"type":"pg_create_select_permission","args":{"table":{"name":"preferred","schema":"public"},"role":"user","permission":{"columns":["rate","id","uid","name","country","currency","issuer","share_number","source","resolution","updated_by","updated_at","last_change","valid"],"computed_fields":[],"backend_only":false,"filter":{},"limit":null,"allow_aggregations":true}}},{"type":"pg_create_update_permission","args":{"table":{"name":"preferred","schema":"public"},"role":"user","permission":{"columns":["rate","id","uid","name","country","currency","issuer","share_number","source","resolution","updated_by","updated_at","last_change","valid"],"filter":{},"backend_only":false,"set":{},"check":{}}}},{"type":"pg_create_delete_permission","args":{"table":{"name":"preferred","schema":"public"},"role":"user","permission":{"backend_only":false,"filter":{}}}}]}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
+SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bulk","args":[{"type":"pg_track_table","args":{"table":{"name":"preferred","schema":"public"}}},{"type":"pg_create_insert_permission","args":{"table":{"name":"preferred","schema":"public"},"role":"user","permission":{"check":{},"allow_upsert":true,"backend_only":false,"set":{},"columns":["rate","id","uid","name","country","currency","issuer","share_number","source","resolution","user","asat","asof"]}}},{"type":"pg_create_select_permission","args":{"table":{"name":"preferred","schema":"public"},"role":"user","permission":{"columns":["rate","id","uid","name","country","currency","issuer","share_number","source","resolution","user","asat","asof"],"computed_fields":[],"backend_only":false,"filter":{},"limit":null,"allow_aggregations":true}}},{"type":"pg_create_update_permission","args":{"table":{"name":"preferred","schema":"public"},"role":"user","permission":{"columns":["rate","id","uid","name","country","currency","issuer","share_number","source","resolution","user","asat","asof"],"filter":{},"backend_only":false,"set":{},"check":{}}}},{"type":"pg_create_delete_permission","args":{"table":{"name":"preferred","schema":"public"},"role":"user","permission":{"backend_only":false,"filter":{}}}}]}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
 `,
       },
       {
@@ -115,18 +125,24 @@ SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bu
         ],
         output: `
 CREATE TABLE "bond" (
-  "maturity_date" TIMESTAMPTZ NOT NULL,${ADDITIONAL_COLUMNS}
-  CONSTRAINT "UNIQUE_bond" UNIQUE ("uid", "name", "country", "currency", "maturity_date"),
+  "maturity_date" TIMESTAMPTZ NOT NULL,
+  "source" "source" NOT NULL DEFAULT 'manual',
+  "resolution" "resolution",
+  "user" TEXT NOT NULL,
+  "asat" TSTZRANGE NOT NULL DEFAULT tstzrange(CURRENT_TIMESTAMP, NULL),
+  "asof" TSTZRANGE NOT NULL DEFAULT tstzrange(NULL, NULL),
   CONSTRAINT "PK_bond" PRIMARY KEY ("id")
 ) INHERITS ("instrument");
 
 
 CREATE TRIGGER "01_permission" BEFORE INSERT OR UPDATE OR DELETE ON "bond"
 FOR EACH ROW EXECUTE FUNCTION permission();
-CREATE TRIGGER "02_history" BEFORE INSERT OR UPDATE OR DELETE ON "bond"
-FOR EACH ROW EXECUTE FUNCTION history();
+CREATE TRIGGER "02_asat" BEFORE INSERT OR UPDATE OR DELETE ON "bond"
+FOR EACH ROW WHEN (pg_trigger_depth() = 0) EXECUTE FUNCTION asat();
+CREATE TRIGGER "03_asof" BEFORE INSERT ON "bond"
+FOR EACH ROW WHEN (pg_trigger_depth() = 0) EXECUTE FUNCTION asof();
 
-SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bulk","args":[{"type":"pg_track_table","args":{"table":{"name":"bond","schema":"public"}}},{"type":"pg_create_insert_permission","args":{"table":{"name":"bond","schema":"public"},"role":"user","permission":{"check":{},"allow_upsert":true,"backend_only":false,"set":{},"columns":["maturity_date","id","uid","name","country","currency","source","resolution","updated_by","updated_at","last_change","valid"]}}},{"type":"pg_create_select_permission","args":{"table":{"name":"bond","schema":"public"},"role":"user","permission":{"columns":["maturity_date","id","uid","name","country","currency","source","resolution","updated_by","updated_at","last_change","valid"],"computed_fields":[],"backend_only":false,"filter":{},"limit":null,"allow_aggregations":true}}},{"type":"pg_create_update_permission","args":{"table":{"name":"bond","schema":"public"},"role":"user","permission":{"columns":["maturity_date","id","uid","name","country","currency","source","resolution","updated_by","updated_at","last_change","valid"],"filter":{},"backend_only":false,"set":{},"check":{}}}},{"type":"pg_create_delete_permission","args":{"table":{"name":"bond","schema":"public"},"role":"user","permission":{"backend_only":false,"filter":{}}}}]}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
+SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bulk","args":[{"type":"pg_track_table","args":{"table":{"name":"bond","schema":"public"}}},{"type":"pg_create_insert_permission","args":{"table":{"name":"bond","schema":"public"},"role":"user","permission":{"check":{},"allow_upsert":true,"backend_only":false,"set":{},"columns":["maturity_date","id","uid","name","country","currency","source","resolution","user","asat","asof"]}}},{"type":"pg_create_select_permission","args":{"table":{"name":"bond","schema":"public"},"role":"user","permission":{"columns":["maturity_date","id","uid","name","country","currency","source","resolution","user","asat","asof"],"computed_fields":[],"backend_only":false,"filter":{},"limit":null,"allow_aggregations":true}}},{"type":"pg_create_update_permission","args":{"table":{"name":"bond","schema":"public"},"role":"user","permission":{"columns":["maturity_date","id","uid","name","country","currency","source","resolution","user","asat","asof"],"filter":{},"backend_only":false,"set":{},"check":{}}}},{"type":"pg_create_delete_permission","args":{"table":{"name":"bond","schema":"public"},"role":"user","permission":{"backend_only":false,"filter":{}}}}]}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
 `,
       },
       {
@@ -143,18 +159,24 @@ CREATE TABLE "coupon" (
   "bond_id" INTEGER NOT NULL REFERENCES "bond"("id"),
   "date" TIMESTAMPTZ NOT NULL,
   "currency" TEXT NOT NULL,
-  "coupon" REAL NOT NULL,${ADDITIONAL_COLUMNS}
-  CONSTRAINT "UNIQUE_coupon" UNIQUE ("bond_id", "date", "currency", "coupon"),
+  "coupon" REAL NOT NULL,
+  "source" "source" NOT NULL DEFAULT 'manual',
+  "resolution" "resolution",
+  "user" TEXT NOT NULL,
+  "asat" TSTZRANGE NOT NULL DEFAULT tstzrange(CURRENT_TIMESTAMP, NULL),
+  "asof" TSTZRANGE NOT NULL DEFAULT tstzrange(NULL, NULL),
   CONSTRAINT "PK_coupon" PRIMARY KEY ("id")
 );
 
 
 CREATE TRIGGER "01_permission" BEFORE INSERT OR UPDATE OR DELETE ON "coupon"
 FOR EACH ROW EXECUTE FUNCTION permission();
-CREATE TRIGGER "02_history" BEFORE INSERT OR UPDATE OR DELETE ON "coupon"
-FOR EACH ROW EXECUTE FUNCTION history();
+CREATE TRIGGER "02_asat" BEFORE INSERT OR UPDATE OR DELETE ON "coupon"
+FOR EACH ROW WHEN (pg_trigger_depth() = 0) EXECUTE FUNCTION asat();
+CREATE TRIGGER "03_asof" BEFORE INSERT ON "coupon"
+FOR EACH ROW WHEN (pg_trigger_depth() = 0) EXECUTE FUNCTION asof();
 
-SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bulk","args":[{"type":"pg_track_table","args":{"table":{"name":"coupon","schema":"public"}}},{"type":"pg_create_insert_permission","args":{"table":{"name":"coupon","schema":"public"},"role":"user","permission":{"check":{},"allow_upsert":true,"backend_only":false,"set":{},"columns":["id","bond_id","date","currency","coupon","source","resolution","updated_by","updated_at","last_change","valid"]}}},{"type":"pg_create_select_permission","args":{"table":{"name":"coupon","schema":"public"},"role":"user","permission":{"columns":["id","bond_id","date","currency","coupon","source","resolution","updated_by","updated_at","last_change","valid"],"computed_fields":[],"backend_only":false,"filter":{},"limit":null,"allow_aggregations":true}}},{"type":"pg_create_update_permission","args":{"table":{"name":"coupon","schema":"public"},"role":"user","permission":{"columns":["id","bond_id","date","currency","coupon","source","resolution","updated_by","updated_at","last_change","valid"],"filter":{},"backend_only":false,"set":{},"check":{}}}},{"type":"pg_create_delete_permission","args":{"table":{"name":"coupon","schema":"public"},"role":"user","permission":{"backend_only":false,"filter":{}}}}]}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
+SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bulk","args":[{"type":"pg_track_table","args":{"table":{"name":"coupon","schema":"public"}}},{"type":"pg_create_insert_permission","args":{"table":{"name":"coupon","schema":"public"},"role":"user","permission":{"check":{},"allow_upsert":true,"backend_only":false,"set":{},"columns":["id","bond_id","date","currency","coupon","source","resolution","user","asat","asof"]}}},{"type":"pg_create_select_permission","args":{"table":{"name":"coupon","schema":"public"},"role":"user","permission":{"columns":["id","bond_id","date","currency","coupon","source","resolution","user","asat","asof"],"computed_fields":[],"backend_only":false,"filter":{},"limit":null,"allow_aggregations":true}}},{"type":"pg_create_update_permission","args":{"table":{"name":"coupon","schema":"public"},"role":"user","permission":{"columns":["id","bond_id","date","currency","coupon","source","resolution","user","asat","asof"],"filter":{},"backend_only":false,"set":{},"check":{}}}},{"type":"pg_create_delete_permission","args":{"table":{"name":"coupon","schema":"public"},"role":"user","permission":{"backend_only":false,"filter":{}}}}]}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
 `,
       },
     ],
@@ -319,10 +341,9 @@ SELECT pg_sleep(2);
 CREATE TYPE "source" AS ENUM ('manual', 'bloomberg', 'reuters');
 CREATE TYPE "resolution" AS ENUM ('rejected', 'approved');
 `)
-await execute_sql(history_feature)
+await execute_sql(triggers)
 await execute_sql(business_object_feature)
 await execute_sql(business_rule_feature)
-await execute_sql(permission_feature)
 await execute_sql(`
 INSERT INTO permission (target, code) VALUES ('admin', '');
 INSERT INTO permission (target, code) VALUES ('user', $$
@@ -378,20 +399,20 @@ INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (9, '2022-01-01', 'U
 INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (9, '2023-01-01', 'USD', 0.07);
 `)
 await execute_sql(`
-SELECT reject(id) FROM candidates() WHERE "uid" = 'FR-018066960' AND "country" = 'FR';
-SELECT approve(id) FROM instrument WHERE "uid" = 'FR-018066960' AND "country" = 'FR';
-SELECT approve(id) FROM instrument WHERE "uid" = 'FR-018066960' AND "country" = 'FR'; -- SAME QUERY AS ABOVE, WILL NOT APPEAR IN history TABLE
-UPDATE instrument SET "resolution" = 'approved' WHERE "uid" = 'FR-018066960' AND "country" = 'FR'; -- SAME QUERY AS ABOVE, WILL NOT APPEAR IN history TABLE
-UPDATE instrument SET "resolution" = 'approved' WHERE "uid" = 'FR-018066960' AND "country" = 'FR'; -- SAME QUERY AS ABOVE, WILL NOT APPEAR IN history TABLE
+SELECT reject(id) FROM candidates() WHERE "uid" = 'FR-018066960';
+SELECT approve(id) FROM instrument WHERE "uid" = 'FR-018066960';
+SELECT approve(id) FROM instrument WHERE "uid" = 'FR-018066960'; -- SAME QUERY AS ABOVE, WILL NOT APPEAR IN history TABLE
+UPDATE instrument SET "resolution" = 'approved' WHERE "uid" = 'FR-018066960'; -- SAME QUERY AS ABOVE, WILL NOT APPEAR IN history TABLE
+UPDATE instrument SET "resolution" = 'approved' WHERE "uid" = 'FR-018066960'; -- SAME QUERY AS ABOVE, WILL NOT APPEAR IN history TABLE
 
 INSERT INTO instrument (uid, name, country, currency) VALUES ('FR-018066960', 'AF-PRIVATE-DEBT', 'US', 'USD');
 SELECT reject(id) FROM candidates() WHERE "uid" = 'FR-018066960' AND "country" = 'US';
--- UPDATE history SET "date" = '2020-01-01' WHERE id IN(SELECT max(id) FROM history); -- force date for last history entry
--- UPDATE history SET "date" = '2020-01-01' WHERE "table" = 'instrument' AND row->>'uid' = 'FR-018066960' AND row->>'country' = 'FR';
 
 INSERT INTO instrument (uid, name, country, currency, resolution) VALUES ('FR-018066960', 'AF-PRIVATE-DEBT', 'IT', 'EUR', 'approved');
 DELETE FROM instrument WHERE "country" = 'IT';
 INSERT INTO instrument (uid, name, country, currency, source, resolution) VALUES ('FR-018066960', 'af-private-debt', 'FR', 'EUR', 'bloomberg', 'approved');
+
+INSERT INTO instrument (uid, name, country, currency, source, resolution, "user") VALUES ('FR-018066960', 'af-private-debt', 'FR', 'EUR', 'bloomberg', 'approved', 'user-id-1-trying-to-hack-the-system');
 
 -- SELECT * FROM history WHERE "date" < '2021-01-01';
 -- SELECT * FROM history WHERE row->>'uid' = 'FR-018066960'; -- THIS WORKS

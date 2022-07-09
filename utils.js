@@ -138,15 +138,10 @@ export const business_object_insert = ({ object, inherits = [], fields = {}, com
     .join(',\n  ')
   const str_columns_track = Object.keys({ ...id_field, ...fields })
     .concat(inherited_fields)
-    .concat(['source', 'resolution', 'updated_by', 'updated_at', 'last_change', 'valid'])
+    .concat(['source', 'resolution', 'user', 'asat', 'asof'])
     .filter((v, i, a) => a.indexOf(v) === i)
     .map(k => `"${k}"`)
     .join(',')
-  const str_unique = inherited_fields
-    .filter(k => k !== 'id')
-    .concat(Object.keys(fields))
-    .map(k => `"${k}"`)
-    .join(', ')
   const str_inherits = inherits.length ? ` INHERITS (${inherits.map(k => `"${k}"`).join(', ')})` : ''
   const str_comments = Object.entries(comments)
     .map(([k, v]) => (k === 'object' ? `COMMENT ON TABLE "${object}" IS '${v || ''}';` : `COMMENT ON COLUMN "${object}"."${k}" IS '${v || ''}';`))
@@ -156,19 +151,19 @@ CREATE TABLE "${object}" (
   ${str_columns},
   "source" "source" NOT NULL DEFAULT 'manual',
   "resolution" "resolution",
-  "updated_by" TEXT NOT NULL,
-  "updated_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "last_change" INT,
-  "valid" TSTZRANGE,
-  CONSTRAINT "UNIQUE_${object}" UNIQUE (${str_unique}),
+  "user" TEXT NOT NULL,
+  "asat" TSTZRANGE NOT NULL DEFAULT tstzrange(CURRENT_TIMESTAMP, NULL),
+  "asof" TSTZRANGE NOT NULL DEFAULT tstzrange(NULL, NULL),
   CONSTRAINT "PK_${object}" PRIMARY KEY ("id")
 )${str_inherits};
 ${str_comments}
 
 CREATE TRIGGER "01_permission" BEFORE INSERT OR UPDATE OR DELETE ON "${object}"
 FOR EACH ROW EXECUTE FUNCTION permission();
-CREATE TRIGGER "02_history" BEFORE INSERT OR UPDATE OR DELETE ON "${object}"
-FOR EACH ROW EXECUTE FUNCTION history();
+CREATE TRIGGER "02_asat" BEFORE INSERT OR UPDATE OR DELETE ON "${object}"
+FOR EACH ROW WHEN (pg_trigger_depth() = 0) EXECUTE FUNCTION asat();
+CREATE TRIGGER "03_asof" BEFORE INSERT ON "${object}"
+FOR EACH ROW WHEN (pg_trigger_depth() = 0) EXECUTE FUNCTION asof();
 
 SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bulk","args":[{"type":"pg_track_table","args":{"table":{"name":"${object}","schema":"public"}}},{"type":"pg_create_insert_permission","args":{"table":{"name":"${object}","schema":"public"},"role":"user","permission":{"check":{},"allow_upsert":true,"backend_only":false,"set":{},"columns":[${str_columns_track}]}}},{"type":"pg_create_select_permission","args":{"table":{"name":"${object}","schema":"public"},"role":"user","permission":{"columns":[${str_columns_track}],"computed_fields":[],"backend_only":false,"filter":{},"limit":null,"allow_aggregations":true}}},{"type":"pg_create_update_permission","args":{"table":{"name":"${object}","schema":"public"},"role":"user","permission":{"columns":[${str_columns_track}],"filter":{},"backend_only":false,"set":{},"check":{}}}},{"type":"pg_create_delete_permission","args":{"table":{"name":"${object}","schema":"public"},"role":"user","permission":{"backend_only":false,"filter":{}}}}]}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
 `
@@ -176,7 +171,6 @@ SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bu
 export const business_object_delete = ({ object }) => {
   if (!object) throw new Error(`No object specified`)
   return `
-DROP TRIGGER history ON "${object}";
 DROP TABLE "${object}";
 SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg_untrack_table","args":{"table":{"name":"${object}","schema":"public"}}}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
 `
@@ -241,7 +235,6 @@ RETURNS TRIGGER
 LANGUAGE plv8 AS $trigger$
 
 ${[log, execute, business_object_insert, business_object_delete].map(fn => `const ${fn.name} = ${fn.toString()}`).join('\n')}
-
 if (TG_OP === 'INSERT') {
   execute(business_object_insert(NEW))
 }
@@ -273,7 +266,6 @@ RETURNS TRIGGER
 LANGUAGE plv8 AS $trigger$
 
 ${[log, execute, business_rule_insert, business_rule_delete].map(fn => `const ${fn.name} = ${fn.toString()}`).join('\n')}
-
 if (TG_OP === 'INSERT') {
   execute(business_rule_insert(NEW))
 }
@@ -302,49 +294,20 @@ FOR EACH ROW EXECUTE FUNCTION business_rule();
 
 SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bulk","args":[{"type":"pg_track_table","args":{"table":{"name":"business_rule","schema":"public"}}},{"type":"pg_create_insert_permission","args":{"table":{"name":"business_rule","schema":"public"},"role":"user","permission":{"check":{},"allow_upsert":true,"backend_only":false,"set":{},"columns":["rule","language","type","input","output","code","comments"]}}},{"type":"pg_create_select_permission","args":{"table":{"name":"business_rule","schema":"public"},"role":"user","permission":{"columns":["rule","language","type","input","output","code","comments"],"computed_fields":[],"backend_only":false,"filter":{},"limit":null,"allow_aggregations":true}}},{"type":"pg_create_update_permission","args":{"table":{"name":"business_rule","schema":"public"},"role":"user","permission":{"columns":["rule","language","type","input","output","code","comments"],"filter":{},"backend_only":false,"set":{},"check":{}}}},{"type":"pg_create_delete_permission","args":{"table":{"name":"business_rule","schema":"public"},"role":"user","permission":{"backend_only":false,"filter":{}}}}]}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
 `
-export const history_feature = `
-CREATE FUNCTION history() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER AS $trigger$BEGIN
-IF (TG_OP = 'INSERT') THEN
-  INSERT INTO history ("table", "operation", "row") VALUES (TG_RELNAME, 'INSERT', row_to_json(NEW));
-  RETURN NEW;
-END IF;
-IF (TG_OP = 'UPDATE') THEN
-  IF (OLD != NEW) THEN
-    -- OLD.history = NULL;
-    INSERT INTO history ("table", "operation", "row") VALUES (TG_RELNAME, 'UPDATE', row_to_json(NEW)) RETURNING id INTO NEW.last_change;
-    -- NEW.history = row_to_json(OLD)::jsonb;
-  END IF;
-  RETURN NEW;
-END IF;
-IF (TG_OP = 'DELETE') THEN
-  INSERT INTO history ("table", "operation", "row") VALUES (TG_RELNAME, 'DELETE', row_to_json(OLD));
-  RETURN OLD;
-END IF;
-END$trigger$;
-CREATE TABLE "history" (
-  "id" SERIAL NOT NULL,
-  "table" TEXT NOT NULL,
-  "operation" TEXT NOT NULL,
-  "row" JSONB,
-  CONSTRAINT "PK_history" PRIMARY KEY ("id")
-);
-
-SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bulk","args":[{"type":"pg_track_table","args":{"table":{"name":"history","schema":"public"}}},{"type":"pg_create_insert_permission","args":{"table":{"name":"history","schema":"public"},"role":"user","permission":{"check":{},"allow_upsert":true,"backend_only":false,"set":{},"columns":["id","table","operation","row"]}}},{"type":"pg_create_select_permission","args":{"table":{"name":"history","schema":"public"},"role":"user","permission":{"columns":["id","table","operation","row"],"computed_fields":[],"backend_only":false,"filter":{},"limit":null,"allow_aggregations":true}}},{"type":"pg_create_update_permission","args":{"table":{"name":"history","schema":"public"},"role":"user","permission":{"columns":["id","table","operation","row"],"filter":{},"backend_only":false,"set":{},"check":{}}}},{"type":"pg_create_delete_permission","args":{"table":{"name":"history","schema":"public"},"role":"user","permission":{"backend_only":false,"filter":{}}}}]}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
-`
-export const permission_feature = `
+export const triggers = `
 CREATE FUNCTION permission() RETURNS trigger
 LANGUAGE plv8 AS $trigger$
+
 const { execute } = plv8
 let [{ 'x-hasura-user-id': id, 'x-hasura-role': role }] = execute(\`SELECT * FROM jsonb_to_record(current_setting('hasura.user', true)::jsonb) AS data("x-hasura-user-id" "text", "x-hasura-role" "text");\`)
 if (!role) role = 'anon'
 if (!id) id = role
-if (NEW) NEW.updated_by = id
-if (NEW) NEW.updated_at = new Date()
+if (NEW) NEW.user = id
 const permissions = execute(\`SELECT * FROM permission WHERE target IN ('\${id}', '\${role}');\`)
 if (permissions.length === 0) throw new Error(\`No permissions defined for user "\${id}" and role "\${role}"\`)
 permissions.forEach(v => eval(v.code))
 return NEW
+
 $trigger$;
 CREATE TABLE "permission" (
   "id" SERIAL NOT NULL,
@@ -353,6 +316,48 @@ CREATE TABLE "permission" (
   -- "rule" TEXT NOT NULL, -- REFERENCES "business_rule"("rule")
   CONSTRAINT "PK_permission" PRIMARY KEY ("id")
 );
+
+CREATE FUNCTION "asat"() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER AS $trigger$BEGIN
+
+IF (TG_OP = 'INSERT') THEN
+  RETURN NEW;
+END IF;
+IF (TG_OP = 'UPDATE') THEN
+  IF (upper(OLD.asat) IS NOT NULL OR OLD.asat = 'empty' OR OLD = NEW) THEN
+    RETURN NULL;
+  END IF;
+  OLD.asat = tstzrange(lower(OLD.asat), CURRENT_TIMESTAMP); -- + INTERVAL '1 microsecond'
+  NEW.asat = tstzrange(CURRENT_TIMESTAMP, NULL);
+  SELECT nextval(pg_get_serial_sequence(TG_RELNAME, 'id')) INTO NEW.id;
+  EXECUTE 'INSERT INTO ' || TG_RELNAME || ' SELECT $1.*' USING NEW;
+  RETURN OLD;
+END IF;
+IF (TG_OP = 'DELETE') THEN
+  IF (upper(OLD.asat) IS NULL AND OLD.asat <> 'empty') THEN
+    EXECUTE 'UPDATE ' || TG_RELNAME || ' SET asat = tstzrange(lower(asat), CURRENT_TIMESTAMP) WHERE id = $1.id' USING OLD;
+  END IF;
+  RETURN NULL;
+END IF;
+
+END$trigger$;
+
+CREATE FUNCTION "asof"() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER AS $trigger$DECLARE
+t text;
+BEGIN
+
+SELECT STRING_AGG('"' || column_name || '"', ', ')
+FROM information_schema.columns
+WHERE table_name = TG_RELNAME
+AND table_schema = 'public'
+AND column_name NOT IN ('id', 'asat', 'asof') INTO t;
+-- EXECUTE 'INSERT INTO ' || TG_RELNAME || ' (' || t || ', asof) SELECT ' || t || ', tstzrange(upper($1.asof), upper(asof)) FROM ' || TG_RELNAME || ' WHERE asof && $1.asof AND $1.asof &< asof AND upper(asat) IS NULL' USING NEW;
+-- EXECUTE 'INSERT INTO ' || TG_RELNAME || ' (' || t || ', asof) SELECT ' || t || ', tstzrange(lower(asof), lower($1.asof)) FROM ' || TG_RELNAME || ' WHERE asof && $1.asof AND $1.asof &> asof AND upper(asat) IS NULL' USING NEW;
+-- EXECUTE 'UPDATE ' || TG_RELNAME || ' SET asat = tstzrange(lower(asat), CURRENT_TIMESTAMP) WHERE asof && $1.asof AND upper(asat) IS NULL' USING NEW;
+RETURN NEW;
+
+END$trigger$;
 
 SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"pg_track_table","args":{"table":{"name":"permission","schema":"public"}}}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
 `
