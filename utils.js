@@ -132,7 +132,7 @@ export const business_object_insert = ({ object, inherits = [], fields = {}, com
   }
   // prettier-ignore
   const inherited_fields = inherits.length ? execute(`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name IN (${inherits.map(k => `'${k}'`)});`).map(v => v.column_name) : []
-  const id_field = inherited_fields.find(v => v === 'id') ? {} : { id: 'serial' }
+  const id_field = inherited_fields.find(v => v === 'id') ? {} : { id: 'serial', uid: 'text' }
   const str_columns = Object.entries({ ...id_field, ...fields })
     .map(column_type)
     .join(',\n  ')
@@ -154,6 +154,7 @@ CREATE TABLE "${object}" (
   "user" TEXT NOT NULL,
   "asat" TSTZRANGE NOT NULL DEFAULT tstzrange(CURRENT_TIMESTAMP, NULL),
   "asof" TSTZRANGE NOT NULL DEFAULT tstzrange(NULL, NULL),
+  EXCLUDE USING gist (uid WITH =, source WITH =, asat WITH &&, asof WITH &&),
   CONSTRAINT "PK_${object}" PRIMARY KEY ("id")
 )${str_inherits};
 ${str_comments}
@@ -327,11 +328,15 @@ IF (TG_OP = 'UPDATE') THEN
   IF (upper(OLD.asat) IS NOT NULL OR OLD.asat = 'empty' OR OLD = NEW) THEN
     RETURN NULL;
   END IF;
-  OLD.asat = tstzrange(lower(OLD.asat), CURRENT_TIMESTAMP); -- + INTERVAL '1 microsecond'
+  OLD.asat = tstzrange(lower(OLD.asat), CURRENT_TIMESTAMP);
+  EXECUTE 'UPDATE ' || TG_RELNAME || ' SET asat = tstzrange(lower(asat), CURRENT_TIMESTAMP) WHERE id = $1.id' USING OLD;
   NEW.asat = tstzrange(CURRENT_TIMESTAMP, NULL);
+  IF (OLD.resolution = NEW.resolution) THEN
+    NEW.resolution = NULL;
+  END IF;
   SELECT nextval(pg_get_serial_sequence(TG_RELNAME, 'id')) INTO NEW.id;
   EXECUTE 'INSERT INTO ' || TG_RELNAME || ' SELECT $1.*' USING NEW;
-  RETURN OLD;
+  RETURN NULL;
 END IF;
 IF (TG_OP = 'DELETE') THEN
   IF (upper(OLD.asat) IS NULL AND OLD.asat <> 'empty') THEN
@@ -352,9 +357,9 @@ FROM information_schema.columns
 WHERE table_name = TG_RELNAME
 AND table_schema = 'public'
 AND column_name NOT IN ('id', 'asat', 'asof') INTO t;
--- EXECUTE 'INSERT INTO ' || TG_RELNAME || ' (' || t || ', asof) SELECT ' || t || ', tstzrange(upper($1.asof), upper(asof)) FROM ' || TG_RELNAME || ' WHERE asof && $1.asof AND $1.asof &< asof AND upper(asat) IS NULL' USING NEW;
--- EXECUTE 'INSERT INTO ' || TG_RELNAME || ' (' || t || ', asof) SELECT ' || t || ', tstzrange(lower(asof), lower($1.asof)) FROM ' || TG_RELNAME || ' WHERE asof && $1.asof AND $1.asof &> asof AND upper(asat) IS NULL' USING NEW;
--- EXECUTE 'UPDATE ' || TG_RELNAME || ' SET asat = tstzrange(lower(asat), CURRENT_TIMESTAMP) WHERE asof && $1.asof AND upper(asat) IS NULL' USING NEW;
+EXECUTE 'UPDATE ' || TG_RELNAME || ' SET asat = tstzrange(lower(asat), CURRENT_TIMESTAMP) WHERE asof && $1.asof AND upper(asat) IS NULL AND uid = $1.uid AND source = $1.source' USING NEW;
+EXECUTE 'INSERT INTO ' || TG_RELNAME || ' (' || t || ', asof) SELECT ' || t || ', tstzrange(lower(asof), lower($1.asof)) FROM ' || TG_RELNAME || ' WHERE asof && $1.asof AND $1.asof &> asof AND upper(asat) = CURRENT_TIMESTAMP AND uid = $1.uid AND source = $1.source' USING NEW;
+EXECUTE 'INSERT INTO ' || TG_RELNAME || ' (' || t || ', asof) SELECT ' || t || ', tstzrange(upper($1.asof), upper(asof)) FROM ' || TG_RELNAME || ' WHERE asof && $1.asof AND $1.asof &< asof AND upper(asat) = CURRENT_TIMESTAMP AND uid = $1.uid AND source = $1.source' USING NEW;
 RETURN NEW;
 
 END$trigger$;

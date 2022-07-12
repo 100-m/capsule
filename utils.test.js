@@ -20,7 +20,7 @@ const scenarios_modeling = [
           {
             object: 'instrument',
             inherits: [],
-            fields: { uid: 'string', name: 'string', country: 'string', currency: 'string' },
+            fields: { name: 'string', country: 'string', currency: 'string' },
             comments: {
               object: 'This is the instrument table',
               uid: 'This is the instrument identifier used internally by NeoXam or his client',
@@ -39,6 +39,7 @@ CREATE TABLE "instrument" (
   "user" TEXT NOT NULL,
   "asat" TSTZRANGE NOT NULL DEFAULT tstzrange(CURRENT_TIMESTAMP, NULL),
   "asof" TSTZRANGE NOT NULL DEFAULT tstzrange(NULL, NULL),
+  EXCLUDE USING gist (uid WITH =, source WITH =, asat WITH &&, asof WITH &&),
   CONSTRAINT "PK_instrument" PRIMARY KEY ("id")
 );
 COMMENT ON TABLE "instrument" IS 'This is the instrument table';
@@ -71,6 +72,7 @@ CREATE TABLE "equity" (
   "user" TEXT NOT NULL,
   "asat" TSTZRANGE NOT NULL DEFAULT tstzrange(CURRENT_TIMESTAMP, NULL),
   "asof" TSTZRANGE NOT NULL DEFAULT tstzrange(NULL, NULL),
+  EXCLUDE USING gist (uid WITH =, source WITH =, asat WITH &&, asof WITH &&),
   CONSTRAINT "PK_equity" PRIMARY KEY ("id")
 ) INHERITS ("instrument");
 
@@ -101,6 +103,7 @@ CREATE TABLE "preferred" (
   "user" TEXT NOT NULL,
   "asat" TSTZRANGE NOT NULL DEFAULT tstzrange(CURRENT_TIMESTAMP, NULL),
   "asof" TSTZRANGE NOT NULL DEFAULT tstzrange(NULL, NULL),
+  EXCLUDE USING gist (uid WITH =, source WITH =, asat WITH &&, asof WITH &&),
   CONSTRAINT "PK_preferred" PRIMARY KEY ("id")
 ) INHERITS ("equity");
 
@@ -131,6 +134,7 @@ CREATE TABLE "bond" (
   "user" TEXT NOT NULL,
   "asat" TSTZRANGE NOT NULL DEFAULT tstzrange(CURRENT_TIMESTAMP, NULL),
   "asof" TSTZRANGE NOT NULL DEFAULT tstzrange(NULL, NULL),
+  EXCLUDE USING gist (uid WITH =, source WITH =, asat WITH &&, asof WITH &&),
   CONSTRAINT "PK_bond" PRIMARY KEY ("id")
 ) INHERITS ("instrument");
 
@@ -156,6 +160,7 @@ SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bu
         output: `
 CREATE TABLE "coupon" (
   "id" SERIAL NOT NULL,
+  "uid" TEXT NOT NULL,
   "bond_id" INTEGER NOT NULL REFERENCES "bond"("id"),
   "date" TIMESTAMPTZ NOT NULL,
   "currency" TEXT NOT NULL,
@@ -165,6 +170,7 @@ CREATE TABLE "coupon" (
   "user" TEXT NOT NULL,
   "asat" TSTZRANGE NOT NULL DEFAULT tstzrange(CURRENT_TIMESTAMP, NULL),
   "asof" TSTZRANGE NOT NULL DEFAULT tstzrange(NULL, NULL),
+  EXCLUDE USING gist (uid WITH =, source WITH =, asat WITH &&, asof WITH &&),
   CONSTRAINT "PK_coupon" PRIMARY KEY ("id")
 );
 
@@ -176,7 +182,7 @@ FOR EACH ROW WHEN (pg_trigger_depth() = 0) EXECUTE FUNCTION asat();
 CREATE TRIGGER "03_asof" BEFORE INSERT ON "coupon"
 FOR EACH ROW WHEN (pg_trigger_depth() = 0) EXECUTE FUNCTION asof();
 
-SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bulk","args":[{"type":"pg_track_table","args":{"table":{"name":"coupon","schema":"public"}}},{"type":"pg_create_insert_permission","args":{"table":{"name":"coupon","schema":"public"},"role":"user","permission":{"check":{},"allow_upsert":true,"backend_only":false,"set":{},"columns":["id","bond_id","date","currency","coupon","source","resolution","user","asat","asof"]}}},{"type":"pg_create_select_permission","args":{"table":{"name":"coupon","schema":"public"},"role":"user","permission":{"columns":["id","bond_id","date","currency","coupon","source","resolution","user","asat","asof"],"computed_fields":[],"backend_only":false,"filter":{},"limit":null,"allow_aggregations":true}}},{"type":"pg_create_update_permission","args":{"table":{"name":"coupon","schema":"public"},"role":"user","permission":{"columns":["id","bond_id","date","currency","coupon","source","resolution","user","asat","asof"],"filter":{},"backend_only":false,"set":{},"check":{}}}},{"type":"pg_create_delete_permission","args":{"table":{"name":"coupon","schema":"public"},"role":"user","permission":{"backend_only":false,"filter":{}}}}]}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
+SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bulk","args":[{"type":"pg_track_table","args":{"table":{"name":"coupon","schema":"public"}}},{"type":"pg_create_insert_permission","args":{"table":{"name":"coupon","schema":"public"},"role":"user","permission":{"check":{},"allow_upsert":true,"backend_only":false,"set":{},"columns":["id","uid","bond_id","date","currency","coupon","source","resolution","user","asat","asof"]}}},{"type":"pg_create_select_permission","args":{"table":{"name":"coupon","schema":"public"},"role":"user","permission":{"columns":["id","uid","bond_id","date","currency","coupon","source","resolution","user","asat","asof"],"computed_fields":[],"backend_only":false,"filter":{},"limit":null,"allow_aggregations":true}}},{"type":"pg_create_update_permission","args":{"table":{"name":"coupon","schema":"public"},"role":"user","permission":{"columns":["id","uid","bond_id","date","currency","coupon","source","resolution","user","asat","asof"],"filter":{},"backend_only":false,"set":{},"check":{}}}},{"type":"pg_create_delete_permission","args":{"table":{"name":"coupon","schema":"public"},"role":"user","permission":{"backend_only":false,"filter":{}}}}]}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
 `,
       },
     ],
@@ -251,7 +257,7 @@ SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bu
             language: 'sql',
             type: 'query',
             output: 'instrument',
-            code: `RETURN QUERY SELECT * FROM instrument WHERE resolution IS NULL;`,
+            code: `RETURN QUERY SELECT * FROM instrument WHERE resolution IS NULL AND upper(asat) IS NULL;`,
             comments: {},
           },
         ],
@@ -261,7 +267,7 @@ candidates()
 RETURNS SETOF instrument
 LANGUAGE plpgsql STABLE
 AS $function$BEGIN
-RETURN QUERY SELECT * FROM instrument WHERE resolution IS NULL;
+RETURN QUERY SELECT * FROM instrument WHERE resolution IS NULL AND upper(asat) IS NULL;
 END$function$;
 
 
@@ -282,6 +288,7 @@ SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"bu
 SELECT * FROM instrument
 WHERE instrument.uid = golden.uid
 AND instrument.resolution = 'approved'
+AND upper(asat) IS NULL
 ORDER BY instrument.source DESC
 LIMIT 1;`,
             comments: {},
@@ -297,6 +304,7 @@ RETURN QUERY
 SELECT * FROM instrument
 WHERE instrument.uid = golden.uid
 AND instrument.resolution = 'approved'
+AND upper(asat) IS NULL
 ORDER BY instrument.source DESC
 LIMIT 1;
 END$function$;
@@ -336,6 +344,7 @@ DROP SCHEMA IF EXISTS public CASCADE;
 CREATE SCHEMA public;
 CREATE EXTENSION IF NOT EXISTS plv8;
 CREATE EXTENSION IF NOT EXISTS pg_net;
+CREATE EXTENSION IF NOT EXISTS btree_gist;
 SELECT net.http_post('https://capsule.dock.nx.digital/v1/metadata', '{"type":"clear_metadata","args":{}}', '{}'::jsonb, '{"content-type":"application/json","x-hasura-admin-secret":"fMIhN8q92lOQWVGH"}'::jsonb, 5000);
 SELECT pg_sleep(2);
 CREATE TYPE "source" AS ENUM ('manual', 'bloomberg', 'reuters');
@@ -350,8 +359,7 @@ INSERT INTO permission (target, code) VALUES ('user', $$
 // NOTE: We must use loose comparison == or != or cast values before comparing because of plv8
 if (TG_OP === 'INSERT' && NEW.resolution) throw new Error('4-eyes violation detected')
 if (TG_OP === 'UPDATE' && NEW.resolution != OLD.resolution) {
-  const [{ creator }] = plv8.execute(\`SELECT row['updated_by'] AS creator FROM history WHERE "table" = '\${TG_TABLE_NAME}' AND operation = 'INSERT' AND row['id']::int = \${NEW.id};\`)
-  if (creator == NEW.updated_by) throw new Error('4-eyes violation detected')
+  if (OLD.user == NEW.user) throw new Error('4-eyes violation detected')
 }
 $$);
 `)
@@ -389,34 +397,34 @@ INSERT INTO equity (uid, name, country, currency, issuer, share_number) VALUES (
 INSERT INTO equity (uid, name, country, currency, issuer, share_number) VALUES ('FR-943649527', 'AF-PREF-5%', 'FR', 'EUR', 'AIR FRANCE KLM', '787057726');
 INSERT INTO bond (uid, name, country, currency, maturity_date) VALUES ('FR-439903446', 'GGL-2027-2.3%', 'FR', 'EUR', '2027-01-01');
 INSERT INTO bond (uid, name, country, currency, maturity_date) VALUES ('FR-744967405', 'KLM-2023-7%', 'FR', 'EUR', '2023-01-01');
-INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (8, '2022-01-01', 'USD', 0.023);
-INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (8, '2023-01-01', 'USD', 0.023);
-INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (8, '2024-01-01', 'USD', 0.023);
-INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (8, '2025-01-01', 'USD', 0.023);
-INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (8, '2026-01-01', 'USD', 0.023);
-INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (8, '2027-01-01', 'USD', 0.023);
-INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (9, '2022-01-01', 'USD', 0.07);
-INSERT INTO coupon (bond_id, date, currency, coupon) VALUES (9, '2023-01-01', 'USD', 0.07);
+INSERT INTO coupon (uid, bond_id, date, currency, coupon) VALUES ('8-1', 8, '2022-01-01', 'USD', 0.023);
+INSERT INTO coupon (uid, bond_id, date, currency, coupon) VALUES ('8-2', 8, '2023-01-01', 'USD', 0.023);
+INSERT INTO coupon (uid, bond_id, date, currency, coupon) VALUES ('8-3', 8, '2024-01-01', 'USD', 0.023);
+INSERT INTO coupon (uid, bond_id, date, currency, coupon) VALUES ('8-4', 8, '2025-01-01', 'USD', 0.023);
+INSERT INTO coupon (uid, bond_id, date, currency, coupon) VALUES ('8-5', 8, '2026-01-01', 'USD', 0.023);
+INSERT INTO coupon (uid, bond_id, date, currency, coupon) VALUES ('8-6', 8, '2027-01-01', 'USD', 0.023);
+INSERT INTO coupon (uid, bond_id, date, currency, coupon) VALUES ('9-1', 9, '2022-01-01', 'USD', 0.07);
+INSERT INTO coupon (uid, bond_id, date, currency, coupon) VALUES ('9-2', 9, '2023-01-01', 'USD', 0.07);
 `)
 await execute_sql(`
 SELECT reject(id) FROM candidates() WHERE "uid" = 'FR-018066960';
 SELECT approve(id) FROM instrument WHERE "uid" = 'FR-018066960';
-SELECT approve(id) FROM instrument WHERE "uid" = 'FR-018066960'; -- SAME QUERY AS ABOVE, WILL NOT APPEAR IN history TABLE
-UPDATE instrument SET "resolution" = 'approved' WHERE "uid" = 'FR-018066960'; -- SAME QUERY AS ABOVE, WILL NOT APPEAR IN history TABLE
-UPDATE instrument SET "resolution" = 'approved' WHERE "uid" = 'FR-018066960'; -- SAME QUERY AS ABOVE, WILL NOT APPEAR IN history TABLE
+SELECT approve(id) FROM instrument WHERE "uid" = 'FR-018066960'; -- SAME QUERY AS ABOVE, WILL NOT APPEAR IN history
+UPDATE instrument SET "resolution" = 'approved' WHERE "uid" = 'FR-018066960'; -- SAME QUERY AS ABOVE, WILL NOT APPEAR IN history
+UPDATE instrument SET "resolution" = 'approved' WHERE "uid" = 'FR-018066960'; -- SAME QUERY AS ABOVE, WILL NOT APPEAR IN history
+DO $$BEGIN ASSERT (SELECT count(*) FROM instrument WHERE "uid" = 'FR-018066960') = 3, 'Duplicate entries for approve/reject';END$$;
 
-INSERT INTO instrument (uid, name, country, currency) VALUES ('FR-018066960', 'AF-PRIVATE-DEBT', 'US', 'USD');
-SELECT reject(id) FROM candidates() WHERE "uid" = 'FR-018066960' AND "country" = 'US';
-
-INSERT INTO instrument (uid, name, country, currency, resolution) VALUES ('FR-018066960', 'AF-PRIVATE-DEBT', 'IT', 'EUR', 'approved');
-DELETE FROM instrument WHERE "country" = 'IT';
-INSERT INTO instrument (uid, name, country, currency, source, resolution) VALUES ('FR-018066960', 'af-private-debt', 'FR', 'EUR', 'bloomberg', 'approved');
+DO $$BEGIN ASSERT (SELECT count(*) FROM instrument WHERE "uid" = 'FR-018066960' AND resolution IS NULL AND upper(asat) IS NULL) = 0, '4 eyes already approved';END$$;
+UPDATE instrument SET "currency" = 'USD' WHERE "uid" = 'FR-018066960';
+DO $$BEGIN ASSERT (SELECT count(*) FROM instrument WHERE "uid" = 'FR-018066960' AND resolution IS NULL AND upper(asat) IS NULL) = 1, '4 eyes activated automatically';END$$;
 
 INSERT INTO instrument (uid, name, country, currency, source, resolution, "user") VALUES ('FR-018066960', 'af-private-debt', 'FR', 'EUR', 'bloomberg', 'approved', 'user-id-1-trying-to-hack-the-system');
-
--- SELECT * FROM history WHERE "date" < '2021-01-01';
--- SELECT * FROM history WHERE row->>'uid' = 'FR-018066960'; -- THIS WORKS
--- SELECT * FROM history WHERE row['uid']::text = 'FR-018066960'; -- THIS DOESN'T WORKS
--- SELECT id FROM candidates();
--- SELECT row['resolution'] FROM history WHERE "table" = 'instrument' AND "row_id" = 1 AND date < '2022-03-10' ORDER BY date DESC LIMIT 2;
+DO $$BEGIN ASSERT (SELECT count(*) FROM instrument WHERE "user" = 'user-id-1-trying-to-hack-the-system') = 0, 'User impersonation';END$$;
+DO LANGUAGE plv8 $$
+try {
+  plv8.execute("INSERT INTO instrument (uid, name, country, currency, source, resolution) VALUES ('FR-018066960', 'af-private-debt', 'FR', 'EUR', 'bloomberg', 'approved');")
+} catch(e) {
+  if (e.message !== 'conflicting key value violates exclusion constraint "instrument_uid_source_asat_asof_excl"') throw e
+}
+$$;
 `)
